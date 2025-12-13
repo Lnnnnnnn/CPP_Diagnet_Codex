@@ -7,6 +7,11 @@
 #define ENABLE_HW_SIMCNNFAULT_BN 0
 #endif
 
+// When defined, init_demo_params will include the generated parameter blob.
+#ifndef HW_SIMCNNFAULT_V1_PARAMS_FILE
+#define HW_SIMCNNFAULT_V1_PARAMS_FILE "HW_SimCNNFault_V1_params.inc"
+#endif
+
 // Weight/bias storage populated with deterministic demo values to keep the
 // HLS data path exercised even before trained parameters are available.
 // Replace with trained parameters before deployment.
@@ -31,10 +36,15 @@ static input_type STEM_BN_BETA[STEM_OUT_CH];
 static input_type STEM_BN_MEAN[STEM_OUT_CH];
 static input_type STEM_BN_VAR[STEM_OUT_CH];
 
-static input_type BRANCH_BN_GAMMA[BRANCH_OUT_CH];
-static input_type BRANCH_BN_BETA[BRANCH_OUT_CH];
-static input_type BRANCH_BN_MEAN[BRANCH_OUT_CH];
-static input_type BRANCH_BN_VAR[BRANCH_OUT_CH];
+static input_type BRANCH3_BN_GAMMA[BRANCH_OUT_CH];
+static input_type BRANCH3_BN_BETA[BRANCH_OUT_CH];
+static input_type BRANCH3_BN_MEAN[BRANCH_OUT_CH];
+static input_type BRANCH3_BN_VAR[BRANCH_OUT_CH];
+
+static input_type BRANCH5_BN_GAMMA[BRANCH_OUT_CH];
+static input_type BRANCH5_BN_BETA[BRANCH_OUT_CH];
+static input_type BRANCH5_BN_MEAN[BRANCH_OUT_CH];
+static input_type BRANCH5_BN_VAR[BRANCH_OUT_CH];
 
 static input_type BLOCK2_BN_GAMMA[BLOCK2_OUT_CH];
 static input_type BLOCK2_BN_BETA[BLOCK2_OUT_CH];
@@ -63,6 +73,12 @@ static void init_demo_params() {
     if (params_initialized)
         return;
 
+#ifdef HW_SIMCNNFAULT_V1_USE_TRAINED_PARAMS
+#include HW_SIMCNNFAULT_V1_PARAMS_FILE
+    params_initialized = true;
+    return;
+#endif
+
     // Stem
     for (int o = 0; o < STEM_OUT_CH; ++o) {
         STEM_B[o] = (Dtype_w)0.01 * (o + 1);
@@ -79,10 +95,14 @@ static void init_demo_params() {
     for (int o = 0; o < BRANCH_OUT_CH; ++o) {
         BRANCH3_B[o] = (Dtype_w)0.02 * (o + 1);
         BRANCH5_B[o] = (Dtype_w)0.03 * (o + 1);
-        BRANCH_BN_GAMMA[o] = 1;
-        BRANCH_BN_BETA[o] = 0;
-        BRANCH_BN_MEAN[o] = 0;
-        BRANCH_BN_VAR[o] = 1;
+        BRANCH3_BN_GAMMA[o] = 1;
+        BRANCH3_BN_BETA[o] = 0;
+        BRANCH3_BN_MEAN[o] = 0;
+        BRANCH3_BN_VAR[o] = 1;
+        BRANCH5_BN_GAMMA[o] = 1;
+        BRANCH5_BN_BETA[o] = 0;
+        BRANCH5_BN_MEAN[o] = 0;
+        BRANCH5_BN_VAR[o] = 1;
         for (int c = 0; c < STEM_OUT_CH; ++c) {
             for (int k = 0; k < 3; ++k) {
                 BRANCH3_W[0][k][c][o] = (Dtype_w)(0.001 * (k + 1) + 0.0005 * (c + 1) + 0.01 * (o + 1));
@@ -354,8 +374,8 @@ void hw_simcnn_fault_v1_forward(input_type input[INPUT_LEN], output_type output[
 #pragma HLS ARRAY_PARTITION variable=branch5_out complete dim=2
     conv1d_branch(STEM_OUT_LEN, 5, 1, STEM_OUT_CH, BRANCH_OUT_CH, 2, stem_out, BRANCH5_W, BRANCH5_B, branch5_out);
 #if ENABLE_HW_SIMCNNFAULT_BN
-    apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch3_out, BRANCH_BN_GAMMA, BRANCH_BN_BETA, BRANCH_BN_MEAN, BRANCH_BN_VAR);
-    apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch5_out, BRANCH_BN_GAMMA, BRANCH_BN_BETA, BRANCH_BN_MEAN, BRANCH_BN_VAR);
+    apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch3_out, BRANCH3_BN_GAMMA, BRANCH3_BN_BETA, BRANCH3_BN_MEAN, BRANCH3_BN_VAR);
+    apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch5_out, BRANCH5_BN_GAMMA, BRANCH5_BN_BETA, BRANCH5_BN_MEAN, BRANCH5_BN_VAR);
 #endif
 
     input_type merge_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
@@ -413,5 +433,8 @@ void hw_simcnn_fault_v1_forward(input_type input[INPUT_LEN], output_type output[
 //    set the macro to 1 and fill the *_BN_* arrays to enable affine BN after each convolution.
 //    Alternatively, pre-fold BN into the convolution weights/biases before synthesis.
 // 2. Dropout in the final MLP head is skipped; this is typically disabled at inference time.
-// 3. Weight/bias arrays are populated with deterministic demo values; swap in trained weights before deployment.
+// 3. Weight/bias arrays are populated with deterministic demo values; define
+//    HW_SIMCNNFAULT_V1_USE_TRAINED_PARAMS and point HW_SIMCNNFAULT_V1_PARAMS_FILE
+//    to a generated include (see export_hw_simcnn_fault_v1_params.py) to bake in
+//    trained checkpoints.
 // 4. Sigmoid uses hls::exp(ap_fixed<32,16>); ensure the target device/library supports this or substitute an approximation.
