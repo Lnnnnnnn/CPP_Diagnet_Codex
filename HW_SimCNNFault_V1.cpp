@@ -11,19 +11,28 @@
 // HLS data path exercised even before trained parameters are available.
 // Replace with trained parameters before deployment.
 
-static Dtype_w STEM_W[1][7][1][STEM_OUT_CH];
-static Dtype_w STEM_B[STEM_OUT_CH];
-
-static Dtype_w BRANCH3_W[1][3][STEM_OUT_CH][BRANCH_OUT_CH];
-static Dtype_w BRANCH3_B[BRANCH_OUT_CH];
-static Dtype_w BRANCH5_W[1][5][STEM_OUT_CH][BRANCH_OUT_CH];
-static Dtype_w BRANCH5_B[BRANCH_OUT_CH];
-
-static Dtype_w BLOCK2_W[1][5][BRANCH_OUT_CH][BLOCK2_OUT_CH];
-static Dtype_w BLOCK2_B[BLOCK2_OUT_CH];
-
 static Dtype_w BLOCK3_W[1][3][BLOCK2_OUT_CH][BLOCK3_OUT_CH];
 static Dtype_w BLOCK3_B[BLOCK3_OUT_CH];
+
+
+// #pragma HLS ARRAY_PARTITION variable=STEM_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=STEM_B type=complete dim=0
+
+// #pragma HLS ARRAY_PARTITION variable=BRANCH3_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=BRANCH3_B type=complete dim=0
+// #pragma HLS ARRAY_PARTITION variable=BRANCH5_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=BRANCH5_B type=complete dim=0
+//
+// #pragma HLS ARRAY_PARTITION variable=BLOCK2_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=BLOCK2_B type=complete dim=0
+//
+// #pragma HLS ARRAY_PARTITION variable=ATT1_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=ATT2_W type=complete dim=1
+//
+// #pragma HLS ARRAY_PARTITION variable=FC1_W type=complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=FC1_B type=complete dim=0
+// #pragma HLS ARRAY_PARTITION variable=FC2_W type=complete dim=1
+// #pragma HLS ARRAY_PARTITION variable=FC1_B type=complete dim=0
 
 // Optional BatchNorm parameters (filled with identity defaults by init routine)
 static input_type STEM_BN_GAMMA[STEM_OUT_CH];
@@ -46,111 +55,11 @@ static input_type BLOCK3_BN_BETA[BLOCK3_OUT_CH];
 static input_type BLOCK3_BN_MEAN[BLOCK3_OUT_CH];
 static input_type BLOCK3_BN_VAR[BLOCK3_OUT_CH];
 
-static Dtype_w ATT1_W[BLOCK3_OUT_CH][BLOCK3_OUT_CH / 2];
-static Dtype_w ATT1_B[BLOCK3_OUT_CH / 2];
-static Dtype_w ATT2_W[BLOCK3_OUT_CH / 2][BLOCK3_OUT_CH];
-static Dtype_w ATT2_B[BLOCK3_OUT_CH];
 
-static Dtype_w FC1_W[BLOCK3_OUT_CH][BLOCK3_OUT_CH];
-static Dtype_w FC1_B[BLOCK3_OUT_CH];
-static Dtype_w FC2_W[BLOCK3_OUT_CH][NUM_CLASSES];
-static Dtype_w FC2_B[NUM_CLASSES];
 
 static bool params_initialized = false;
 
-static void init_demo_params() {
-#pragma HLS INLINE off
-    if (params_initialized)
-        return;
 
-    // Stem
-    for (int o = 0; o < STEM_OUT_CH; ++o) {
-        STEM_B[o] = (Dtype_w)0.01 * (o + 1);
-        for (int k = 0; k < 7; ++k) {
-            STEM_W[0][k][0][o] = (Dtype_w)(0.001 * (k + 1) + 0.01 * (o + 1));
-        }
-        STEM_BN_GAMMA[o] = 1;
-        STEM_BN_BETA[o] = 0;
-        STEM_BN_MEAN[o] = 0;
-        STEM_BN_VAR[o] = 1;
-    }
-
-    // Branch 3x3 and 5x5
-    for (int o = 0; o < BRANCH_OUT_CH; ++o) {
-        BRANCH3_B[o] = (Dtype_w)0.02 * (o + 1);
-        BRANCH5_B[o] = (Dtype_w)0.03 * (o + 1);
-        BRANCH_BN_GAMMA[o] = 1;
-        BRANCH_BN_BETA[o] = 0;
-        BRANCH_BN_MEAN[o] = 0;
-        BRANCH_BN_VAR[o] = 1;
-        for (int c = 0; c < STEM_OUT_CH; ++c) {
-            for (int k = 0; k < 3; ++k) {
-                BRANCH3_W[0][k][c][o] = (Dtype_w)(0.001 * (k + 1) + 0.0005 * (c + 1) + 0.01 * (o + 1));
-            }
-            for (int k = 0; k < 5; ++k) {
-                BRANCH5_W[0][k][c][o] = (Dtype_w)(0.0015 * (k + 1) + 0.0004 * (c + 1) + 0.008 * (o + 1));
-            }
-        }
-    }
-
-    // Block2
-    for (int o = 0; o < BLOCK2_OUT_CH; ++o) {
-        BLOCK2_B[o] = (Dtype_w)0.015 * (o + 1);
-        BLOCK2_BN_GAMMA[o] = 1;
-        BLOCK2_BN_BETA[o] = 0;
-        BLOCK2_BN_MEAN[o] = 0;
-        BLOCK2_BN_VAR[o] = 1;
-        for (int c = 0; c < BRANCH_OUT_CH; ++c) {
-            for (int k = 0; k < 5; ++k) {
-                BLOCK2_W[0][k][c][o] = (Dtype_w)(0.0008 * (k + 1) + 0.0003 * (c + 1) + 0.006 * (o + 1));
-            }
-        }
-    }
-
-    // Block3
-    for (int o = 0; o < BLOCK3_OUT_CH; ++o) {
-        BLOCK3_B[o] = (Dtype_w)0.01 * (o + 1);
-        BLOCK3_BN_GAMMA[o] = 1;
-        BLOCK3_BN_BETA[o] = 0;
-        BLOCK3_BN_MEAN[o] = 0;
-        BLOCK3_BN_VAR[o] = 1;
-        for (int c = 0; c < BLOCK2_OUT_CH; ++c) {
-            for (int k = 0; k < 3; ++k) {
-                BLOCK3_W[0][k][c][o] = (Dtype_w)(0.0009 * (k + 1) + 0.00025 * (c + 1) + 0.004 * (o + 1));
-            }
-        }
-    }
-
-    // Attention FC (1x1 conv form)
-    for (int h = 0; h < BLOCK3_OUT_CH / 2; ++h) {
-        ATT1_B[h] = (Dtype_w)0.002 * (h + 1);
-        for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
-            ATT1_W[c][h] = (Dtype_w)(0.0005 * (c + 1) + 0.001 * (h + 1));
-        }
-    }
-    for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
-        ATT2_B[c] = (Dtype_w)0.0015 * (c + 1);
-        for (int h = 0; h < BLOCK3_OUT_CH / 2; ++h) {
-            ATT2_W[h][c] = (Dtype_w)(0.0007 * (h + 1) + 0.0006 * (c + 1));
-        }
-    }
-
-    // FC head
-    for (int o = 0; o < BLOCK3_OUT_CH; ++o) {
-        FC1_B[o] = (Dtype_w)0.005 * (o + 1);
-        for (int i = 0; i < BLOCK3_OUT_CH; ++i) {
-            FC1_W[i][o] = (Dtype_w)(0.0004 * (i + 1) + 0.0002 * (o + 1));
-        }
-    }
-    for (int o = 0; o < NUM_CLASSES; ++o) {
-        FC2_B[o] = (Dtype_w)0.01 * (o + 1);
-        for (int i = 0; i < BLOCK3_OUT_CH; ++i) {
-            FC2_W[i][o] = (Dtype_w)(0.0003 * (i + 1) + 0.0001 * (o + 1));
-        }
-    }
-
-    params_initialized = true;
-}
 
 static inline input_type relu(input_type x) {
     return (x > 0) ? x : (input_type)0;
@@ -174,275 +83,751 @@ static void apply_batchnorm(const int_type length, const int_type channels, inpu
 }
 
 static void conv1d(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
-                   const int_type out_ch, const int_type pad, input_type input[][1], const Dtype_w w[][7][1][STEM_OUT_CH],
-                   const Dtype_w b[], input_type output[][STEM_OUT_CH]) {
+                   const int_type out_ch, const int_type pad, input_type input[][1], input_type output[][STEM_OUT_CH]) {
+
+    static Dtype_w w[1][7][1][STEM_OUT_CH] = {
+        {
+            // Flattened: K, In, Out
+            0.46724492f, -0.02179677f, 0.00038073f, -0.02848881f, 0.22894615f, 0.14431849f, -0.22798176f, 0.09856024f,
+            -0.09656970f, -0.45456931f, 0.31694743f, 0.31128043f, 0.31348568f, 0.85032964f, 0.08367108f, -0.52690959f,
+            -0.01576982f, 0.11094679f, -0.11418913f, -0.34787923f, -0.14621195f, -0.01198342f, 0.31139332f, 0.06213713f,
+            -0.38809794f, 0.22259943f, -0.29195219f, 0.11293866f
+            }
+    };
+    static Dtype_w b[STEM_OUT_CH] = {
+        -0.06979451f, -0.05990577f, 0.14268471f, -0.02575495f
+    };
+#pragma HLS ARRAY_PARTITION variable=w type=complete dim=0
+#pragma HLS ARRAY_PARTITION variable=b type=complete dim=0
+
 #pragma HLS INLINE
     for (int o = 0; o < out_ch; ++o) {
+#pragma HLS PIPELINE II=1
         for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
 #pragma HLS PIPELINE II=1
             Dtype_acc acc = 0;
             for (int kk = 0; kk < k; ++kk) {
+#pragma HLS PIPELINE II=1
                 int idx = i * stride - pad + kk;
                 if (idx >= 0 && idx < in_len) {
                     acc += input[idx][0] * w[0][kk][0][o];
                 }
             }
-            acc += b[o];
-            output[i][o] = relu(acc);
+            // acc += b[o];
+            std::cout << "acc = " << acc << std::endl;
+            output[i][o] = acc;
         }
     }
 }
 
-static void conv1d_branch3(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
-                          const int_type out_ch, const int_type pad, input_type input[][STEM_OUT_CH],
-                          const Dtype_w w[][3][STEM_OUT_CH][BRANCH_OUT_CH], const Dtype_w b[],
-                          input_type output[][BRANCH_OUT_CH]) {
-#pragma HLS INLINE
-    for (int o = 0; o < out_ch; ++o) {
-        for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
-#pragma HLS PIPELINE II=1
-            Dtype_acc acc = 0;
-            for (int kk = 0; kk < k; ++kk) {
-                int idx = i * stride - pad + kk;
-                if (idx >= 0 && idx < in_len) {
-                    for (int c = 0; c < in_ch; ++c) {
-                        acc += input[idx][c] * w[0][kk][c][o];
-                    }
-                }
-            }
-            output[i][o] = acc + b[o];
-        }
-    }
-}
-
-static void conv1d_branch5(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
-                          const int_type out_ch, const int_type pad, input_type input[][STEM_OUT_CH],
-                          const Dtype_w w[][5][STEM_OUT_CH][BRANCH_OUT_CH], const Dtype_w b[],
-                          input_type output[][BRANCH_OUT_CH]) {
-#pragma HLS INLINE
-    for (int o = 0; o < out_ch; ++o) {
-        for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
-#pragma HLS PIPELINE II=1
-            Dtype_acc acc = 0;
-            for (int kk = 0; kk < k; ++kk) {
-                int idx = i * stride - pad + kk;
-                if (idx >= 0 && idx < in_len) {
-                    for (int c = 0; c < in_ch; ++c) {
-                        acc += input[idx][c] * w[0][kk][c][o];
-                    }
-                }
-            }
-            output[i][o] = acc + b[o];
-        }
-    }
-}
-
-static void conv1d_block(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
-                         const int_type out_ch, const int_type pad, input_type input[][BRANCH_OUT_CH],
-                         const Dtype_w w[][5][BRANCH_OUT_CH][BLOCK2_OUT_CH], const Dtype_w b[],
-                         input_type output[][BLOCK2_OUT_CH]) {
-#pragma HLS INLINE
-    for (int o = 0; o < out_ch; ++o) {
-        for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
-#pragma HLS PIPELINE II=1
-            Dtype_acc acc = 0;
-            for (int kk = 0; kk < k; ++kk) {
-                int idx = i * stride - pad + kk;
-                if (idx >= 0 && idx < in_len) {
-                    for (int c = 0; c < in_ch; ++c) {
-                        acc += input[idx][c] * w[0][kk][c][o];
-                    }
-                }
-            }
-            output[i][o] = relu(acc + b[o]);
-        }
-    }
-}
-
-static void conv1d_block3(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
-                          const int_type out_ch, const int_type pad, input_type input[][BLOCK2_OUT_CH],
-                          const Dtype_w w[][3][BLOCK2_OUT_CH][BLOCK3_OUT_CH], const Dtype_w b[],
-                          input_type output[][BLOCK3_OUT_CH]) {
-#pragma HLS INLINE
-    for (int o = 0; o < out_ch; ++o) {
-        for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
-#pragma HLS PIPELINE II=1
-            Dtype_acc acc = 0;
-            for (int kk = 0; kk < k; ++kk) {
-                int idx = i * stride - pad + kk;
-                if (idx >= 0 && idx < in_len) {
-                    for (int c = 0; c < in_ch; ++c) {
-                        acc += input[idx][c] * w[0][kk][c][o];
-                    }
-                }
-            }
-            output[i][o] = relu(acc + b[o]);
-        }
-    }
-}
-
-static void channel_attention(input_type input[][BLOCK3_OUT_CH], input_type output[][BLOCK3_OUT_CH]) {
-#pragma HLS INLINE
-    input_type channel_avg[BLOCK3_OUT_CH] = {};
-    for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
-        Dtype_acc acc = 0;
-        for (int i = 0; i < BLOCK3_OUT_LEN; ++i) {
-#pragma HLS PIPELINE II=1
-            acc += input[i][c];
-        }
-        channel_avg[c] = acc / (input_type)BLOCK3_OUT_LEN;
-    }
-
-    input_type hidden[BLOCK3_OUT_CH / 2] = {};
-    for (int h = 0; h < BLOCK3_OUT_CH / 2; ++h) {
-        Dtype_acc acc = 0;
-        for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
-            acc += channel_avg[c] * ATT1_W[c][h];
-        }
-        hidden[h] = relu(acc + ATT1_B[h]);
-    }
-
-    input_type scale[BLOCK3_OUT_CH] = {};
-    for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
-        Dtype_acc acc = 0;
-        for (int h = 0; h < BLOCK3_OUT_CH / 2; ++h) {
-            acc += hidden[h] * ATT2_W[h][c];
-        }
-        input_type s = acc + ATT2_B[c];
-        scale[c] = 1 / ((input_type)1 + hls::exp(ap_fixed<32, 16>(-s)));
-    }
-
-    for (int i = 0; i < BLOCK3_OUT_LEN; ++i) {
-#pragma HLS PIPELINE II=1
-        for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
-            output[i][c] = input[i][c] * scale[c] + input[i][c];
-        }
-    }
-}
-
-static void global_avg(const int_type length, const int_type channels, input_type input[][BLOCK3_OUT_CH], input_type output[]) {
-#pragma HLS INLINE
-    for (int c = 0; c < channels; ++c) {
-        Dtype_acc acc = 0;
-        for (int i = 0; i < length; ++i) {
-#pragma HLS PIPELINE II=1
-            acc += input[i][c];
-        }
-        output[c] = acc / (input_type)length;
-    }
-}
-
-static void dense_layer1(const int_type in_dim, const int_type out_dim, const Dtype_w w[][BLOCK3_OUT_CH], const Dtype_w b[],
-                        input_type input_vec[], input_type output_vec[], bool apply_relu) {
-#pragma HLS INLINE
-    for (int o = 0; o < out_dim; ++o) {
-        Dtype_acc acc = 0;
-        for (int i = 0; i < in_dim; ++i) {
-#pragma HLS PIPELINE II=1
-            acc += input_vec[i] * w[i][o];
-        }
-        input_type val = acc + b[o];
-        output_vec[o] = apply_relu ? relu(val) : val;
-    }
-}
-
-
-
-static void dense_layer2(const int_type in_dim, const int_type out_dim, const Dtype_w w[][NUM_CLASSES], const Dtype_w b[],
-                        input_type input_vec[], input_type output_vec[], bool apply_relu) {
-#pragma HLS INLINE
-    for (int o = 0; o < out_dim; ++o) {
-        Dtype_acc acc = 0;
-        for (int i = 0; i < in_dim; ++i) {
-#pragma HLS PIPELINE II=1
-            acc += input_vec[i] * w[i][o];
-        }
-        input_type val = acc + b[o];
-        output_vec[o] = apply_relu ? relu(val) : val;
-    }
-}
+// static void conv1d_branch3(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
+//                           const int_type out_ch, const int_type pad, input_type input[][STEM_OUT_CH],
+//                           input_type output[][BRANCH_OUT_CH]) {
+//
+//     static Dtype_w w[1][3][STEM_OUT_CH][BRANCH_OUT_CH] = {
+//         {
+//             // Flattened: K, In, Out
+//             -0.09602813f, 0.03276538f, -0.15608591f, -0.01360686f, 0.08692838f, 0.08151793f, -0.41108757f, 0.17248981f,
+//             -0.48496786f, 0.42799935f, 0.40245593f, -0.18993302f, 0.20635545f, -0.13662705f, -0.25989559f, 0.25727209f,
+//             -0.41292796f, 0.25098270f, 0.13692760f, 0.37797961f, 0.05575674f, -0.14953437f, 0.29613584f, -0.22091937f,
+//             0.23159394f, -0.07171521f, -0.05423548f, -0.47035354f, -0.80537802f, -0.34873050f, -0.23878747f, -0.30477318f,
+//             -0.60594672f, -0.04463625f, 0.20031744f, -0.23491475f, -0.04154686f, 0.24710445f, 0.03752543f, -0.37830946f,
+//             0.24550635f, 0.13761736f, 0.04199893f, -0.00762184f, -0.12258106f, 0.16526911f, -0.05580630f, 0.12340245f,
+//             -0.06179820f, 0.28264904f, -0.52840054f, 0.20702839f, 0.06287251f, -0.01518002f, 0.09597582f, -0.14185381f,
+//             -0.01134984f, -0.44216546f, 0.11434116f, -0.77350318f, 0.02099539f, -0.32664123f, 0.30649295f, -0.10669612f,
+//             0.11005263f, 0.17594765f, 0.02357666f, 0.12596799f, -0.09908696f, 0.06168737f, -0.22875413f, -0.28234243f,
+//             -0.15741077f, 0.01208567f, -0.23209465f, 0.04152567f, -0.35718480f, 0.27413106f, -0.80714107f, -0.41458750f,
+//             -0.10896838f, 0.30961165f, 0.33547589f, 0.32813513f, 0.32290018f, 0.30215135f, 0.09753177f, -0.01783960f,
+//             -0.14739586f, -0.15585679f, -0.13621680f, 0.00034008f, -0.51939601f, -0.51475728f, 0.01218768f, 0.05809276f,
+//     }
+//     };
+//     static Dtype_w b[BRANCH_OUT_CH] = {
+//         -0.15359583f, -0.05633006f, -0.21193251f, -0.06387874f, -0.28558096f, -0.15271769f, -0.13657227f, -0.17785136f,
+// };
+// #pragma HLS ARRAY_PARTITION variable=w type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=b type=complete dim=0
+//
+// #pragma HLS INLINE
+//     for (int o = 0; o < out_ch; ++o) {
+//         for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
+// #pragma HLS PIPELINE II=1
+//             Dtype_acc acc = 0;
+//             for (int kk = 0; kk < k; ++kk) {
+//                 int idx = i * stride - pad + kk;
+//                 if (idx >= 0 && idx < in_len) {
+//                     for (int c = 0; c < in_ch; ++c) {
+//                         acc += input[idx][c] * w[0][kk][c][o];
+//                     }
+//                 }
+//             }
+//             output[i][o] = acc + b[o];
+//         }
+//     }
+// }
+//
+// static void conv1d_branch5(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
+//                           const int_type out_ch, const int_type pad, input_type input[][STEM_OUT_CH],
+//                           input_type output[][BRANCH_OUT_CH]) {
+//
+// static Dtype_w w[1][5][STEM_OUT_CH][BRANCH_OUT_CH]  = {
+//         {
+//                 // Flattened: K, In, Out
+//     -0.20431970f, -0.37825698f, 0.10987114f, 0.03404396f, -0.21372703f, 0.14268661f, 0.00992945f, -0.22379099f,
+//     -0.33062679f, -0.40270591f, 0.15122779f, -0.22304349f, 0.01139560f, -0.37422115f, 0.05445571f, -0.07145312f,
+//     -0.50308448f, -0.00505238f, 0.05921034f, 0.01106685f, 0.08329590f, 0.05677374f, 0.41058290f, 0.04973131f,
+//     -0.14115520f, -0.05918185f, -0.25414959f, 0.22149104f, -0.01710390f, -0.50676137f, 0.11534654f, -0.35501933f,
+//     -0.15608405f, -0.17875250f, 0.01081921f, -0.09332335f, 0.12954396f, 0.26371545f, -0.49000087f, 0.34775180f,
+//     -0.12558860f, -0.01555932f, 0.06036519f, -0.26029897f, 0.14723177f, -0.46921104f, -0.34087878f, 0.28431657f,
+//     -0.31263548f, -0.21094623f, -0.16170295f, -0.05218372f, 0.08343574f, 0.07005334f, 0.11923015f, -0.06977526f,
+//     0.11832532f, 0.52963185f, 0.10725050f, -0.30023518f, -0.18292424f, -0.01241029f, 0.11455066f, -0.49866542f,
+//     -0.45317456f, -0.00773703f, -0.32000968f, -0.26981980f, -0.29309094f, 0.21199429f, -0.28429735f, -0.03031221f,
+//     0.17837858f, -0.25316432f, -0.24686240f, -0.03443469f, 0.19278933f, 0.03522234f, -0.38109404f, -0.12898532f,
+//     -0.47528300f, 0.11971823f, -0.49804690f, -0.03026159f, 0.18255550f, 0.10538876f, 0.21557827f, -0.14924605f,
+//     -0.19389537f, 0.13492516f, -0.02669308f, -0.28087041f, 0.16228411f, -0.22628371f, -0.12556413f, -0.35274896f,
+//     -0.33479756f, 0.05781643f, -0.14277060f, -0.23380487f, -0.37464556f, -0.09915928f, -0.16617310f, -0.00834054f,
+//     -0.40394831f, -0.02992262f, -0.22716506f, 0.17253835f, -0.46463892f, 0.10252049f, -0.83590668f, 0.12937765f,
+//     -0.30764014f, 0.01295794f, 0.10185603f, -0.09606132f, 0.09435432f, -0.16478328f, 0.00558174f, -0.00041514f,
+//     0.13149078f, 0.19821915f, -0.30238953f, 0.30403745f, -0.02526812f, -0.20754568f, 0.13219045f, 0.08542641f,
+//     0.18860361f, 0.19459666f, -0.01472651f, 0.15151258f, -0.04560125f, -0.54063332f, -0.13978201f, 0.20347470f,
+//     0.08790989f, -0.22679186f, 0.10472455f, -0.04439406f, -0.57294059f, -0.20340753f, 0.17427135f, 0.14439878f,
+//     -0.26677737f, 0.11119431f, 0.27032262f, 0.09792308f, 0.20839854f, 0.08173911f, -0.05528333f, -0.17904864f,
+//     0.14270721f, -0.38720533f, -0.06576739f, 0.34053737f, 0.17277923f, -0.08421494f, -0.33338422f, -0.83365715f,
+//         }
+// };
+// static Dtype_w b[BRANCH_OUT_CH] = {
+//     -0.15359583f, -0.05633006f, -0.21193251f, -0.06387874f, -0.28558096f, -0.15271769f, -0.13657227f, -0.17785136f,
+// };
+// #pragma HLS ARRAY_PARTITION variable=w type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=b type=complete dim=0
+//
+// #pragma HLS INLINE
+//     for (int o = 0; o < out_ch; ++o) {
+//         for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
+// #pragma HLS PIPELINE II=1
+//             Dtype_acc acc = 0;
+//             for (int kk = 0; kk < k; ++kk) {
+//                 int idx = i * stride - pad + kk;
+//                 if (idx >= 0 && idx < in_len) {
+//                     for (int c = 0; c < in_ch; ++c) {
+//                         acc += input[idx][c] * w[0][kk][c][o];
+//                     }
+//                 }
+//             }
+//             output[i][o] = acc + b[o];
+//         }
+//     }
+// }
+//
+// static void conv1d_block(const int_type in_len, const int_type k, const int_type stride, const int_type in_ch,
+//                          const int_type out_ch, const int_type pad, input_type input[][BRANCH_OUT_CH],
+//                          input_type output[][BLOCK2_OUT_CH]) {
+//
+// static Dtype_w w[1][5][BRANCH_OUT_CH][BLOCK2_OUT_CH] = {
+//         {
+//                 // Flattened: K, In, Out
+//      0.12787797f, -0.12175585f, 0.06194624f, -0.20652232f, 0.00893062f, 0.04028107f, 0.02369855f, -0.07886164f,
+//     0.04031783f, -0.25976521f, 0.06109065f, -0.10146853f, -0.23005207f, -0.04448308f, 0.02917887f, 0.27876052f,
+//     -0.25164154f, -0.32459152f, -0.31536463f, 0.13234766f, -0.06177288f, -0.32809287f, 0.00696710f, 0.07118898f,
+//     0.15193672f, -0.09062696f, -0.11500119f, -0.38415807f, 0.00771701f, 0.12380474f, 0.09474520f, -0.00694578f,
+//     -0.25156006f, 0.20224330f, 0.09728476f, -0.16951169f, -0.38188377f, -0.08597027f, 0.06476284f, -0.25831336f,
+//     0.03064013f, 0.09352399f, 0.11319862f, 0.11302599f, -0.22160120f, -0.03597241f, 0.13246307f, 0.01118950f,
+//     -0.34184796f, -0.24750797f, -0.16371867f, -0.31024498f, -0.18174554f, -0.39148495f, 0.39220130f, 0.48362249f,
+//     0.15245114f, -0.04991090f, 0.15626220f, 0.00981415f, 0.04610769f, 0.07780383f, -0.03629557f, -0.14767666f,
+//     0.05671244f, -0.09941249f, -0.30011779f, 0.26997542f, -0.04678183f, -0.26385182f, -0.05456527f, -0.19834286f,
+//     0.37121889f, 0.17858317f, 0.30840129f, 0.18372551f, 0.10086513f, 0.12009335f, -0.03309613f, 0.30102757f,
+//     -0.02080958f, 0.20809051f, -0.14109938f, 0.20946081f, 0.02969523f, -0.13769117f, -0.19682218f, -0.13302864f,
+//     -0.40910247f, -0.04364621f, -0.10582493f, 0.02217596f, -0.15070958f, 0.09402334f, 0.12098329f, -0.37897325f,
+//     0.20199402f, -0.11588480f, 0.04771222f, -0.22490311f, 0.10911027f, 0.05982793f, 0.12035213f, -0.22168620f,
+//     0.40349311f, -0.09200110f, -0.16815497f, 0.05576759f, 0.18831947f, -0.31157428f, -0.09394873f, 0.38058677f,
+//     -0.11411521f, 0.05106101f, -0.22209834f, 0.00148219f, -0.21324752f, -0.09394111f, 0.27960947f, 0.07542398f,
+//     -0.23679067f, -0.06768066f, -0.02141613f, 0.12708691f, -0.26645279f, 0.08691204f, 0.22240856f, 0.12015942f,
+//     -0.09493003f, -0.08609319f, 0.05842270f, -0.17504722f, -0.18894476f, -0.11533757f, -0.28972033f, 0.18031418f,
+//     -0.33677676f, 0.00528411f, -0.14124760f, 0.03190579f, -0.09426815f, -0.09129348f, -0.11982899f, 0.00770901f,
+//     -0.10811586f, -0.30545148f, 0.24301085f, -0.21384707f, 0.13354838f, 0.06749260f, -0.04854138f, 0.00074775f,
+//     0.16926098f, 0.06412989f, -0.08053827f, -0.21704586f, -0.21057455f, 0.09555218f, -0.06366730f, 0.08357545f,
+//     -0.36465901f, 0.27331319f, 0.20068470f, 0.08124360f, -0.43033418f, -0.04212234f, 0.10527626f, -0.51223457f,
+//     0.12443668f, 0.12817398f, 0.06652309f, 0.23197459f, -0.09446826f, -0.14940533f, 0.18803337f, -0.02441730f,
+//     0.35257605f, 0.10493458f, 0.08870095f, -0.06547201f, -0.29022151f, -0.18352528f, -0.08671108f, -0.17440781f,
+//     0.31355739f, 0.01172831f, -0.28910345f, 0.39607111f, -0.02942341f, -0.09302573f, -0.12546499f, -0.02005396f,
+//     0.07899118f, -0.14284515f, 0.22259334f, 0.12770367f, -0.19987012f, -0.62376302f, 0.13827494f, -0.31726694f,
+//     0.27273008f, 0.19909978f, 0.21286388f, 0.23876554f, -0.27883914f, 0.15324579f, -0.27426261f, 0.00899679f,
+//     0.28961268f, -0.04750321f, -0.41557956f, -0.04593897f, 0.22678564f, 0.30702856f, -0.09803911f, -0.09446660f,
+//     -0.19143151f, 0.11133241f, -0.34229222f, -0.20075727f, -0.61537200f, -0.23600638f, 0.16964854f, 0.05849611f,
+//     -0.07647584f, 0.07127667f, -0.05736029f, 0.11097368f, -0.16575553f, -0.10178597f, 0.43051830f, -0.04662575f,
+//     0.07287468f, -0.05129443f, 0.41101503f, 0.21930724f, 0.09950213f, 0.49459305f, -0.14264135f, -0.28425050f,
+//     -0.00308405f, 0.05524611f, -0.17906554f, -0.16767779f, 0.28282756f, -0.12554137f, 0.01535122f, 0.13226114f,
+//     -0.15291175f, -0.21793008f, -0.05087589f, 0.01991099f, -0.12977263f, 0.18246031f, 0.56699634f, -0.18547584f,
+//     -0.19859299f, -0.12732363f, -0.05572625f, 0.04829044f, -0.26634789f, -0.25120047f, -0.00576957f, 0.06782883f,
+//     -0.10958006f, 0.25479507f, 0.33559811f, -0.23772421f, 0.01078911f, 0.29156163f, -0.03292775f, -0.17292427f,
+//     -0.19880228f, -0.07292619f, -0.39093894f, 0.07213683f, -0.37909910f, -0.19377539f, -0.10150352f, -0.00711572f,
+//     -0.07114764f, 0.01325009f, 0.01629008f, -0.17276737f, -0.02176131f, -0.03776238f, 0.14200200f, -0.04561776f,
+//     -0.37033656f, 0.15939659f, 0.09696321f, 0.41642559f, -0.22362080f, -0.07767223f, 0.12007572f, -0.51101029f,
+//     0.11105496f, -0.02348619f, -0.02781786f, 0.30175164f, 0.09116019f, -0.11491431f, 0.16085006f, 0.01105382f,
+//     -0.24581021f, -0.44564122f, 0.03309804f, -0.04982553f, 0.13461466f, 0.20798573f, 0.04925551f, 0.09704790f,
+//     0.20387949f, 0.13906576f, 0.28449947f, 0.11819141f, -0.26735651f, -0.04326038f, -0.03351519f, 0.14424205f,
+//     0.04708162f, -0.01772314f, -0.07140877f, 0.03383956f, 0.02878430f, 0.08161945f, -0.05256705f, -0.26671982f,
+//     -0.34724250f, -0.20994321f, 0.31897342f, -0.06506597f, -0.20158872f, 0.01345056f, -0.06879110f, 0.01390458f,
+//     -0.05109113f, -0.09950824f, 0.42617816f, -0.12428137f, -0.20435894f, -0.27885133f, -0.35012493f, 0.30136868f,
+//     -0.07889385f, -0.34504494f, 0.02863786f, -0.28804058f, 0.13661973f, 0.37419325f, 0.07777910f, -0.17552555f,
+//     -0.17254625f, -0.05609600f, -0.11624917f, 0.14291376f, 0.08214512f, 0.33834568f, 0.10511858f, -0.05298673f,
+//     0.07210837f, 0.30429342f, -0.01666578f, -0.14619812f, -0.19338289f, -0.17977524f, -0.04988056f, 0.05852567f,
+//     -0.03423541f, -0.07962269f, 0.23532768f, 0.10864413f, -0.22633639f, -0.09140616f, 0.21454832f, 0.22362867f,
+//     -0.20235726f, -0.00248897f, 0.13578528f, -0.21165550f, -0.05322216f, 0.10402834f, 0.39179203f, 0.14186433f,
+//     0.11617947f, -0.05390732f, -0.30442306f, 0.08473446f, 0.08062556f, -0.14549747f, -0.32469365f, 0.01349847f,
+//     -0.13945623f, 0.51746964f, -0.22141688f, -0.09320270f, -0.31989825f, -0.19436361f, 0.04818380f, -0.31652340f,
+//     -0.03301378f, -0.36497098f, 0.04883653f, -0.05962771f, -0.00724120f, 0.08002602f, 0.01206768f, -0.18428437f,
+//     0.02909870f, 0.00344835f, 0.14216311f, 0.00077828f, -0.15089658f, 0.04207459f, -0.18972367f, -0.19834255f,
+//     -0.52301431f, 0.34405506f, 0.16271301f, 0.51798600f, -0.39150396f, 0.04624593f, 0.10363573f, -0.48713797f,
+//     0.09321116f, -0.05306291f, 0.07311913f, 0.31592268f, 0.22373736f, 0.05113274f, 0.07929366f, -0.00101956f,
+//     0.32616416f, -0.32530898f, 0.35089403f, -0.15114750f, -0.37001637f, -0.00704843f, -0.17972197f, 0.00957790f,
+//     0.02251092f, -0.05415797f, -0.11900739f, -0.14921156f, -0.10299733f, 0.01619216f, 0.02689394f, -0.15773748f,
+//     0.07112078f, -0.16187398f, 0.11543054f, -0.09960786f, -0.28770909f, -0.33046034f, 0.13986443f, 0.29565990f,
+//     0.23311593f, 0.09247234f, -0.32747304f, -0.43760851f, 0.21690930f, -0.03640707f, -0.50115156f, 0.25957498f,
+//     -0.14032009f, -0.18704082f, -0.13775493f, -0.22408016f, 0.10663601f, 0.07606108f, -0.06428549f, 0.13400972f,
+//     0.01464553f, 0.18098164f, 0.12293042f, -0.27647173f, 0.06300484f, -0.01629145f, -0.10969400f, -0.25685009f,
+//     -0.21790764f, 0.10770947f, 0.05835161f, 0.44490466f, -0.10663048f, 0.26166368f, 0.23491061f, -0.06809022f,
+//     -0.14170212f, 0.05064532f, -0.27674094f, 0.11180238f, -0.21317977f, -0.02858738f, 0.23682521f, -0.33453989f,
+//     0.10948160f, -0.30361664f, 0.09755629f, -0.15334249f, -0.07768995f, -0.25626978f, -0.14445469f, 0.07856987f,
+//     0.03584776f, -0.07047921f, 0.33263910f, -0.18622798f, 0.06228515f, 0.05151730f, 0.57221806f, 0.01732595f,
+//     0.13846664f, -0.34399632f, 0.04058754f, -0.11767121f, -0.03952440f, -0.21494597f, -0.35328001f, -0.24600440f,
+//     0.18726334f, -0.55624151f, -0.32964239f, -0.20515606f, -0.06346844f, 0.11715925f, -0.03496074f, 0.06886174f,
+//     0.09051930f, -0.27083492f, -0.37039956f, 0.27510670f, -0.00843777f, -0.10727006f, -0.03427592f, 0.23100632f,
+//     -0.04213732f, 0.12515372f, -0.16170523f, -0.09081836f, -0.05904823f, -0.41231906f, 0.09530284f, -0.28093442f,
+//     -0.42212158f, 0.20689197f, 0.14292295f, 0.41979042f, -0.19244498f, 0.02664135f, 0.02176489f, -0.34729370f,
+//     0.05301349f, -0.07653619f, 0.03351887f, 0.17662361f, 0.17976186f, 0.08577952f, -0.05394014f, -0.00618060f,
+//     0.16658001f, 0.00531974f, -0.24366798f, -0.06311455f, 0.19299613f, 0.11638462f, -0.04166353f, -0.31094813f,
+//     -0.19398960f, 0.05065551f, -0.10841330f, 0.29584786f, 0.22349669f, -0.12312633f, -0.02830996f, -0.00800400f,
+//     0.29850575f, 0.17768815f, -0.21602795f, 0.01808418f, 0.37768599f, -0.31116086f, 0.14034978f, 0.12807009f,
+//     -0.20292056f, -0.15604092f, 0.10638455f, -0.19472848f, 0.10928135f, -0.00374315f, 0.17960723f, -0.13026740f,
+//     -0.01485739f, 0.30840835f, -0.00849743f, 0.08098429f, 0.11027758f, -0.15494522f, -0.21503736f, 0.04823025f,
+//     0.45995232f, -0.01667207f, -0.49989027f, -0.42890468f, 0.39691937f, -0.37403330f, -0.43466818f, 0.24413064f,
+//     -0.31317541f, -0.15261577f, 0.11260101f, -0.10092515f, 0.26117244f, 0.02621310f, 0.10413702f, 0.13895899f,
+//     -0.00841655f, -0.34937888f, -0.04134507f, 0.03476363f, -0.10676362f, 0.03261146f, -0.01266478f, 0.06288479f,
+//     0.05197505f, -0.05078155f, -0.17780021f, -0.14753422f, 0.22860374f, -0.00700138f, -0.05928439f, -0.17873725f,
+//     -0.03536687f, 0.23173498f, -0.02761207f, 0.12743732f, -0.01582676f, -0.57894450f, 0.28156793f, 0.20806591f,
+//         }
+// };
+// static Dtype_w b[BLOCK2_OUT_CH] = {
+//     0.07749726f, 0.02911035f, -0.06729724f, -0.08244803f, -0.26705405f, 0.37993088f, -0.09236007f, -0.17792758f,
+//     -0.19936624f, -0.50631297f, -0.58598280f, -0.31300920f, 0.09938796f, -0.03472526f, -0.13450484f, -0.29764247f,
+// };
+// #pragma HLS ARRAY_PARTITION variable=w type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=b type=complete dim=0
+//
+//
+// #pragma HLS INLINE
+//     for (int o = 0; o < out_ch; ++o) {
+//         for (int i = 0; i < (in_len + 2 * pad - k) / stride + 1; ++i) {
+// #pragma HLS PIPELINE II=1
+//             Dtype_acc acc = 0;
+//             for (int kk = 0; kk < k; ++kk) {
+//                 int idx = i * stride - pad + kk;
+//                 if (idx >= 0 && idx < in_len) {
+//                     for (int c = 0; c < in_ch; ++c) {
+//                         acc += input[idx][c] * w[0][kk][c][o];
+//                     }
+//                 }
+//             }
+//             output[i][o] = relu(acc + b[o]);
+//         }
+//     }
+// }
+//
+// static void channel_attention(input_type input[][BLOCK3_OUT_CH], input_type output[][BLOCK3_OUT_CH]) {
+// static Dtype_w ATT1_W[16][8] = {
+//     // Flattened: K, In, Out
+//     0.10793398f, -0.93599248f, 0.54513550f, 0.32555702f, -0.18209660f, -0.75272107f, -0.55878830f, -0.23008116f,
+//     -0.06168545f, 0.12718792f, 0.32508460f, 0.55449945f, 0.04895759f, -0.21971233f, -0.08988024f, 0.37019825f,
+//     0.22568667f, 0.64252871f, 0.53189677f, 0.63992125f, 0.32039580f, 0.37278026f, 0.04660565f, 0.31608441f,
+//     0.39812249f, 0.50068825f, 0.14484769f, 0.71555084f, 0.50640959f, -0.05124709f, 0.16803901f, 0.64769292f,
+//     -0.57146215f, -0.45905855f, 0.47806111f, 0.83375478f, -0.26309142f, -0.29034793f, -0.13622412f, 0.35447377f,
+//     0.28972441f, 0.39206535f, 0.09243175f, 0.45438766f, 0.17408521f, 0.03346422f, 0.56810182f, 0.53484625f,
+//     0.38777620f, -0.70150024f, 0.00200500f, 0.07485101f, 0.22694074f, -0.09494715f, 0.19068307f, -0.70925939f,
+//     -0.32998008f, -0.40475312f, 0.61388469f, 0.51713026f, -0.42926976f, -0.39641404f, -0.38134718f, 0.02637855f,
+//     0.32363185f, 0.27469307f, -0.09232005f, 0.46515441f, 0.39942065f, -0.15367530f, 0.36671486f, -0.05329398f,
+//     -0.16731147f, 0.63215947f, 0.56401765f, 1.07646799f, 0.11937787f, 0.44856444f, -0.00027279f, 0.93154335f,
+//     -0.38122287f, 0.12770401f, 0.83715737f, 0.92609698f, -0.57986552f, 0.98807865f, 0.17237432f, 0.75234079f,
+//     -0.40520361f, 0.40191013f, 0.67915863f, 0.92800540f, -0.66412407f, 0.64834559f, -0.31477308f, 0.73698831f,
+//     -0.17978667f, 0.33194825f, 0.50119746f, 0.30680996f, 0.10138500f, -0.22709271f, -0.10767934f, 0.42604658f,
+//     -0.28363389f, 0.16259849f, 0.81424791f, 0.28019729f, -0.70302361f, 0.52961528f, -0.34251341f, -0.06023340f,
+//     0.23699364f, 0.71113604f, 0.05539604f, 0.01278175f, 0.16679634f, 0.59256095f, 0.42763942f, 0.37680939f,
+//     0.45565379f, 0.19296604f, 0.01961957f, 0.47273934f, 0.68870687f, -0.09115906f, 0.61774462f, -0.04062550f,
+// };
+// static Dtype_w ATT1_B[8] = {0,0,0,0,0,0,0,0};
+// static Dtype_w ATT2_W[8][16] = {
+//                 // Flattened: K, In, Out
+//     0.12753509f, -0.63606697f, 2.15211701f, 0.19145791f, -0.58566475f, 0.54907656f, 0.89346516f, -1.30125284f,
+//     -1.13032579f, 0.01201424f, -1.30537856f, -0.66616356f, -0.77827740f, 1.60334909f, 0.08053941f, 1.49052393f,
+//     0.11441872f, 0.25323763f, 1.38019812f, 0.55256701f, 0.24640498f, 0.27055675f, 0.86157185f, 0.74667329f,
+//     0.39722297f, -0.29035193f, -0.24109915f, 0.47413403f, 0.05394964f, 1.30797148f, 0.81850231f, 0.57867926f,
+//     0.63651109f, 0.19622926f, 1.15681541f, 0.05537831f, 0.65911806f, 0.39331561f, 0.80421984f, 0.40470669f,
+//     0.54376072f, 0.78634781f, 0.60009974f, 0.56279176f, -0.06961840f, 1.03808856f, -0.26681364f, 0.84346914f,
+//     0.55256766f, 0.41071033f, 1.19328535f, 0.35271907f, 0.66538429f, 0.29944468f, 1.41097748f, 0.17439519f,
+//     0.31321746f, 1.08210814f, 0.03481855f, 0.11368670f, 0.50476772f, 1.68151927f, 0.00055611f, 0.78720909f,
+//     0.47929499f, -0.19516620f, 1.17459393f, 0.87176090f, -0.40558350f, 2.37948084f, 0.44898966f, -1.48783100f,
+//     -0.92444980f, -0.10781181f, -2.33479929f, -1.21149135f, -0.35558665f, 0.53959841f, 0.84229076f, 1.83175671f,
+//     -0.09645150f, 0.21207045f, 2.11201453f, 0.25242126f, -0.44212785f, 0.39333618f, 0.98501962f, 0.58683628f,
+//     -0.39685795f, 0.75306511f, 1.05374181f, 0.65301847f, 0.12747455f, 1.22520447f, 0.54780471f, 1.07738173f,
+//     -0.09491105f, -0.43141377f, 2.08295083f, 0.33858439f, -0.27187574f, 0.77128488f, 0.99988621f, -0.76526856f,
+//     -0.47388321f, -0.15048774f, -0.79337388f, -0.65053427f, -0.91419864f, 1.35027230f, 1.07361531f, 1.59341991f,
+//     0.23157181f, 0.35512340f, 1.15614963f, 0.25542787f, 0.60456163f, 0.54470325f, 1.02562797f, 0.81241095f,
+//     0.12383689f, 1.00158155f, -0.02791884f, 0.13734037f, 0.29638347f, 1.49828792f, 0.11443140f, 0.48935276f,
+// };
+// static Dtype_w ATT2_B[16]= {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+//
+// #pragma HLS ARRAY_PARTITION variable=ATT1_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=ATT1_B type=complete dim=0
+// #pragma HLS ARRAY_PARTITION variable=ATT2_W type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=ATT2_B type=complete dim=0
+//
+// #pragma HLS INLINE
+//     // ===== 1) Global Avg Pooling =====
+//     input_type channel_avg[BLOCK3_OUT_CH] = {};
+//
+//     ATT_GAP_C:
+//         for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
+//             Dtype_acc acc = 0;
+//
+//             ATT_GAP_I:
+//                     for (int i = 0; i < BLOCK3_OUT_LEN; ++i) {
+// #pragma HLS PIPELINE II=1
+//                         acc += input[i][c];
+//                     }
+//             channel_avg[c] = acc / (input_type)BLOCK3_OUT_LEN;
+//         }
+//
+//     // ===== 2) FC1 + ReLU =====
+//     input_type hidden[BLOCK3_OUT_CH / 2] = {};
+//
+//     ATT_FC1_H:
+//         for (int h = 0; h < BLOCK3_OUT_CH / 2; ++h) {
+//             Dtype_acc acc = 0;
+//
+//             ATT_FC1_C:
+//                     for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
+//                         acc += channel_avg[c] * ATT1_W[c][h];
+//                     }
+//             hidden[h] = relu(acc + ATT1_B[h]);
+//         }
+//
+//     // ===== 3) FC2 + Sigmoid =====
+//     input_type scale[BLOCK3_OUT_CH] = {};
+//
+//     ATT_FC2_C:
+//         for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
+//             Dtype_acc acc = 0;
+//
+//             ATT_FC2_H:
+//                     for (int h = 0; h < BLOCK3_OUT_CH / 2; ++h) {
+//                         acc += hidden[h] * ATT2_W[h][c];
+//                     }
+//             input_type s = acc + ATT2_B[c];
+//             scale[c] = 1 / ((input_type)1 + hls::exp(ap_fixed<32, 16>(-s)));
+//             // scale[c] = 1 / ((input_type)1 + ((-s)));
+//         }
+//
+//     // ===== 4) Apply Scale + Residual =====
+//     ATT_APPLY_I:
+//         for (int i = 0; i < BLOCK3_OUT_LEN; ++i) {
+// #pragma HLS PIPELINE II=1
+//             ATT_APPLY_C:
+//                     for (int c = 0; c < BLOCK3_OUT_CH; ++c) {
+//                         output[i][c] = input[i][c] * scale[c] + input[i][c];
+//                     }
+//         }
+// }
+//
+// static void global_avg(const int_type length, const int_type channels, input_type input[][BLOCK3_OUT_CH], input_type output[]) {
+// #pragma HLS INLINE
+//     input_type temp[BLOCK3_OUT_CH] = {};
+//     GlobalAvg_CH:
+//     for (int c = 0; c < channels; ++c) {
+// #pragma HLS PIPELINE II=1
+//         Dtype_acc acc = 0;
+//         GlobalAvg_SUM:
+//         for (int i = 0; i < length; ++i) {
+// #pragma HLS PIPELINE II=1
+//             acc += input[i][c];
+//         }
+//         temp[c] = acc / (input_type)length;
+//     }
+//     GlobalAvg_OUTPUT:
+//     for (int c = 0; c < channels; ++c) {
+// #pragma HLS UNROLL
+//         output[c] = temp[c];
+//     }
+//
+//
+// }
+//
+// static void dense_layer1(const int_type in_dim, const int_type out_dim,
+//                         input_type input_vec[], input_type output_vec[], bool apply_relu) {
+//
+// static Dtype_w w[BLOCK3_OUT_CH][64] = {
+//      0.00446378f, -0.31206912f, -0.17700018f, 0.53554308f, 0.61153334f, 0.68843448f, 0.76249242f, -0.04196118f,
+//     -0.44156837f, -0.40651417f, -0.65678871f, 0.00990272f, -0.46585700f, -0.05066075f, 0.20363607f, -0.03760837f,
+//     -0.04628695f, -0.47165549f, 0.23205490f, 0.07956272f, -0.35149339f, 0.19823655f, -0.00469893f, -0.36536863f,
+//     0.17922394f, -0.36175001f, 0.72565031f, -0.27131721f, -0.41171470f, -0.08945701f, -0.01646416f, 0.37690461f,
+//     -0.08438527f, 0.53002381f, -0.35715622f, -0.24004364f, -0.09681344f, -0.00085621f, -0.32050866f, 0.18700047f,
+//     -0.85142928f, 0.03141191f, -0.02588345f, 0.17937532f, 0.10145473f, 0.75119686f, -0.01508288f, -0.23880537f,
+//     0.21089418f, -0.51575494f, 0.29140782f, -0.79224241f, -0.14250173f, 0.03382392f, 0.33210564f, 0.09440269f,
+//     0.12208044f, 0.36930996f, -0.47648889f, 0.53685290f, 0.36172605f, -0.67565274f, -0.13986750f, -0.25270671f,
+//     0.01836653f, -0.27431828f, 0.36930275f, -0.27668735f, 0.26677194f, 0.22920711f, 0.19461717f, -0.30593967f,
+//     0.24330311f, -0.37521029f, 0.01972976f, 0.32563794f, -0.28465492f, -0.22364457f, -0.64480770f, 0.61422205f,
+//     0.36320651f, 0.07875659f, 0.41365218f, -0.44298309f, -0.25636610f, -0.24807094f, -0.05918405f, 0.05737506f,
+//     -0.47734115f, 0.01804490f, 0.07812506f, -0.82736492f, -0.29981917f, -0.21764617f, -0.70142806f, -0.61743200f,
+//     -0.09710302f, 0.17515914f, 0.36539623f, 0.02415441f, -0.01679704f, 0.35149854f, -0.39557162f, 0.56148422f,
+//     0.48214990f, -0.51780981f, 0.22329895f, 0.47020498f, 0.04127476f, -0.10965557f, -0.23546547f, 0.05946948f,
+//     -0.17793596f, -0.03811941f, 0.32965446f, 0.48306099f, -0.18400893f, 0.02429745f, -0.00941463f, 0.06457521f,
+//     0.46063843f, 0.62309116f, -0.14713418f, 0.29879895f, -0.49551123f, 0.75738984f, 0.16488986f, -0.22366981f,
+//     -0.23757981f, 0.25910929f, -0.49586290f, -0.17620628f, -0.59725714f, -0.72269809f, -0.27638751f, 0.62629312f,
+//     0.45202714f, 0.30384508f, 0.29788026f, 0.32069957f, 0.22655669f, -0.09037914f, 0.13140051f, -0.36545703f,
+//     -0.47354764f, -0.37158948f, -0.77057588f, 0.03404769f, 0.45459205f, 0.28784695f, -0.10102639f, -0.18049243f,
+//     0.26051620f, -0.85122818f, -0.24411990f, 0.36394602f, 0.87513578f, 0.53272384f, 0.38762939f, 0.25076556f,
+//     -0.59115118f, -0.21198429f, 0.66235960f, -0.07198384f, 0.11000176f, 0.48283780f, 0.37471899f, -0.30920619f,
+//     0.64207500f, 0.19781336f, 0.19044520f, -0.13164186f, -1.09991574f, -0.68026143f, 0.75707281f, -0.25836074f,
+//     -0.19765842f, 0.17687468f, 0.02539100f, 0.10578161f, -0.06717517f, 0.16057824f, 0.25571272f, 0.10418799f,
+//     -0.29667512f, -0.51604998f, 0.49595067f, 0.17706259f, -0.28386801f, -0.13927217f, 0.69538230f, -0.18608911f,
+//     -0.22491652f, 0.11085317f, 0.15406255f, -0.32617971f, 0.12109584f, -0.20623666f, 0.44103962f, 0.32532287f,
+//     0.50931948f, 0.29960725f, 0.55856907f, 0.07426147f, -0.36976114f, 0.02566333f, -0.36769882f, 0.12040291f,
+//     0.56251007f, -0.18165720f, 0.36221385f, 0.08077511f, -0.44454852f, -0.39688185f, -0.29623866f, 0.24022886f,
+//     -0.24925897f, 0.15938611f, 0.34543008f, -0.83973902f, -0.69386357f, 0.09964772f, -0.23203191f, -0.55554330f,
+//     -0.39408818f, -0.15326144f, -0.03936019f, -0.14439517f, 0.58503842f, 0.24863993f, -0.13968289f, 0.46959665f,
+//     0.23882209f, -0.68101346f, 0.53626543f, 0.82990468f, 0.28069881f, 0.04560902f, -0.46448678f, -0.17670710f,
+//     -0.03868689f, 0.20601802f, 0.58754224f, 0.35199073f, -0.25312689f, 0.14465678f, -0.15842770f, -0.12941366f,
+//     0.64594263f, -0.07949642f, 0.00217747f, -0.00924724f, -0.01763344f, 0.24329758f, 0.15863232f, -0.09488125f,
+//     0.00992077f, 0.07443447f, 0.83530456f, 0.04579600f, -0.22159438f, 0.66583580f, -0.28008601f, -0.37999874f,
+//     -0.31620383f, -0.22309589f, 0.25351819f, -0.48817292f, 0.41305602f, 0.19380789f, -1.02909958f, 0.57238555f,
+//     -0.03811960f, 0.17703225f, 0.19040868f, -0.55189574f, -0.23650388f, 0.04538331f, 0.04481580f, 0.04867093f,
+//     -0.74640369f, 0.41818967f, 0.13744384f, -0.15051925f, -0.63426757f, 0.27061376f, -0.82756656f, -0.30349857f,
+//     0.21094486f, 0.45660770f, 0.01689149f, 0.16546150f, -0.16646257f, -0.15169278f, -0.69676322f, 0.94121158f,
+//     -0.15358086f, -0.10675515f, -0.18915117f, 0.39494556f, 0.84968823f, 0.63126695f, -0.07131926f, 0.20914739f,
+//     -0.10894962f, -0.42987105f, 0.74602896f, -0.30825374f, 0.19181629f, -0.16293275f, 0.24429044f, 0.31885546f,
+//     0.47640130f, 0.60342669f, -0.29821792f, 0.39249274f, 0.05147178f, 0.29999059f, 0.08931130f, -0.02528089f,
+//     -0.11401289f, -0.24229592f, 0.16207221f, 0.61742574f, 0.52603680f, 0.31390131f, 0.04996940f, -0.42915827f,
+//     0.10039084f, -0.29310527f, -0.46032745f, 0.43713719f, -0.09363050f, -0.07660200f, 0.40811047f, -0.39605018f,
+//     0.01459927f, 0.60066509f, 0.37549123f, 0.61483204f, -0.60359907f, -0.69248760f, 0.13032842f, 0.34645551f,
+//     0.78274769f, 0.05298278f, 0.05688103f, -0.12607442f, 0.21911886f, -0.37695825f, -0.37110671f, 0.89529288f,
+//     0.49515882f, -0.03694165f, -0.52813941f, -0.04967183f, -0.50865716f, 0.23908676f, 0.67714083f, -0.48935533f,
+//     -0.17408375f, -0.16794097f, -0.59735698f, -0.47531861f, 0.51047748f, 0.31364766f, -0.25400355f, -0.27049300f,
+//     -0.06308211f, 0.51442671f, -0.62146062f, 0.10179537f, -0.13640702f, -0.12643287f, 0.07764599f, -0.29411948f,
+//     -0.28057551f, 0.10125489f, -0.18137518f, 0.21002360f, 0.75231314f, -0.71138811f, -0.08440640f, -0.08910573f,
+//     -0.01899101f, -0.53060603f, 0.50926799f, 0.77593577f, 0.24884668f, -0.33132678f, -0.41288891f, -0.58883971f,
+//     0.47730336f, -0.81046009f, -0.64544481f, -0.36943546f, 0.91288656f, 0.14798115f, 0.28343207f, -0.00034878f,
+//     0.02298091f, 0.79577315f, -0.16078861f, -0.13858977f, -0.33191219f, -0.05765473f, -0.19365512f, 0.48651305f,
+//     0.37133256f, 0.17187931f, -0.36507350f, 0.63737941f, -0.37636176f, -0.12880695f, -0.25241923f, 0.69617850f,
+//     0.70599568f, 0.79780674f, -0.82524246f, -0.11101969f, -0.59026647f, -0.41071776f, 0.06138724f, -0.12392702f,
+//     0.13696025f, 0.42584461f, -0.92004007f, -0.83176374f, 0.44149479f, -0.36689606f, -0.58424288f, 0.11567029f,
+//     -0.19542257f, 0.68547249f, -0.55199903f, 0.44242880f, -0.11822755f, -0.07032786f, 0.45202786f, -0.13499859f,
+//     -0.62623352f, 0.45990539f, -0.37965357f, -0.10870558f, -0.17456879f, 0.26572961f, -0.25153962f, 0.09100161f,
+//     -0.07732160f, 1.14584148f, -0.26047340f, -0.57048661f, -0.78729290f, 0.59202182f, -0.31268999f, 0.16562043f,
+//     -0.78302491f, 0.55684024f, 0.73668587f, 0.06593887f, -0.06654326f, 0.03119416f, 0.14859624f, -0.53933251f,
+//     -0.03514077f, -0.68767798f, 0.25643200f, -0.47437766f, 0.47919294f, 0.59994620f, -0.32714665f, -0.32746771f,
+//     -0.66436708f, 0.57859492f, -1.00116897f, 0.33366206f, -0.04825425f, -0.23280649f, 0.84101951f, -0.41132927f,
+//     -0.29856089f, -0.08686118f, 0.77491003f, -0.09126453f, 0.39391685f, -0.16645379f, -0.36845770f, -0.74646670f,
+//     -0.53906751f, 0.22052273f, 0.98405826f, 0.57271725f, 0.21928953f, 0.56258613f, 0.57625121f, -0.01736396f,
+//     0.06054888f, -0.75534588f, 0.19095345f, -0.72704148f, 0.00457802f, -0.20737772f, 0.11875244f, -0.33054391f,
+//     -0.17274529f, -0.91393608f, 0.05254406f, -1.09151864f, -0.24631774f, -0.01052944f, 0.44327170f, -0.20473558f,
+//     0.01565623f, -0.16464636f, -0.09540252f, -0.34258923f, -0.95997846f, -0.53398532f, -0.66073710f, 0.47396171f,
+//     -0.65439540f, 0.70940495f, -0.52623916f, 0.71318918f, 0.21467708f, 0.00839504f, 0.77613866f, -0.86032701f,
+//     -0.51883167f, -0.38970712f, -0.35037729f, 0.36337313f, 0.10823465f, 0.24264452f, -0.57876265f, -0.95472282f,
+//     0.01933347f, 0.16817789f, -0.01991640f, 0.14423589f, -0.05553200f, 0.34929901f, 0.56972861f, -0.05128623f,
+//     -0.32014042f, -0.22948295f, 0.55218530f, -0.45505759f, -0.74743444f, 0.64814681f, -0.08895475f, 0.10282742f,
+//     -0.13007142f, 0.44479862f, 0.23784520f, -0.20991963f, -0.41947019f, -0.62087488f, 0.76953357f, 0.13738428f,
+//     -0.21848476f, -0.76760024f, 0.17652923f, -0.84972268f, 0.04328144f, -0.08685935f, -0.31902426f, -0.56699389f,
+//     0.08506421f, -0.08813126f, 0.70339811f, -0.13631371f, 0.73179561f, 0.11982983f, 0.48358583f, 0.00606427f,
+//     0.13799389f, -0.02724308f, 0.15059698f, -0.16689707f, -0.98958045f, -0.76134646f, -0.72807896f, 0.53184003f,
+//     -0.83357811f, 0.52255964f, 0.27057052f, -0.18260065f, -0.16363658f, 0.04761030f, -1.00369072f, 0.32415229f,
+//     -0.04964173f, 0.77647495f, 0.57026887f, 0.09832570f, -0.12981896f, -1.35361350f, 0.74226302f, -1.01764762f,
+//     -0.13941914f, 0.69550556f, 0.95630902f, -0.02130715f, -0.53726435f, -0.41684985f, -0.59418029f, 0.10162938f,
+//     0.59647679f, -0.38723314f, -0.51741606f, 0.51880234f, 0.06084822f, -0.00541557f, -0.12755847f, 0.74592507f,
+//     0.15923271f, 0.55857396f, -0.52656245f, 0.06372160f, 0.52494675f, -0.52781004f, -0.11673447f, -0.18781532f,
+//     -0.00161863f, -0.40887815f, 0.05173211f, -0.79198903f, -0.04618710f, -0.22510910f, -2.08616853f, 0.02698538f,
+//     0.78149563f, 0.12184029f, 0.47258070f, 0.97068954f, 0.49160212f, 0.00566475f, -0.47804064f, -0.02097765f,
+//     -0.10387747f, 0.05423573f, 0.35536644f, -0.31087866f, -0.25575319f, -0.32492849f, 0.18071125f, 0.18237640f,
+//     -0.40949029f, -0.16352229f, 0.37767240f, -0.92165774f, 0.98074883f, -0.16355635f, -0.87177545f, 0.88093066f,
+//     0.05226728f, 0.28702006f, -0.52564663f, -0.53132194f, 0.64629465f, 0.71449399f, 0.60649639f, -0.28331277f,
+//     0.08952855f, -0.21747617f, -0.24342594f, 0.95588303f, 0.71818912f, 0.79366446f, 0.35980201f, -0.22048432f,
+//     0.56998432f, 0.56422341f, -0.75962222f, 0.94655186f, 0.51392126f, -1.00066209f, 0.16404445f, -0.28118399f,
+//     0.31525677f, 1.18752432f, -0.15970458f, -0.07688773f, -1.06920731f, -0.70367301f, 0.25088909f, 0.10129718f,
+//     0.11960685f, 0.12429625f, -0.25693795f, 0.18427473f, 0.14677598f, 0.07177047f, -0.41522345f, 0.80356735f,
+//     -0.30143934f, -0.13615701f, 0.10939442f, -0.31707951f, -0.99758011f, 0.07097100f, -0.70862192f, 0.03570167f,
+//     0.17817767f, 0.45303911f, -0.85231894f, 0.32278857f, -0.06646779f, -0.21368077f, -0.74923128f, 0.07769579f,
+//     -0.01338740f, 0.16035752f, 0.02799534f, -0.58908474f, -0.15811038f, -0.20689578f, -0.56511515f, 0.55610973f,
+//     0.33546171f, -0.53604287f, 0.51443535f, -0.19887921f, 0.70901638f, -0.53919679f, 0.96439230f, -0.32594869f,
+//     -0.02299273f, 0.34137341f, 0.09826085f, 0.09997567f, 0.53172475f, -0.89468884f, 0.05926691f, 0.20400941f,
+//     -0.59503639f, -0.16705254f, 0.31853211f, 0.98325861f, 0.75291657f, -0.42462453f, 0.13789310f, 0.19072445f,
+//     -0.03377628f, 0.09046818f, 0.40554297f, -0.26017234f, -0.51360148f, -0.26900154f, 0.36905816f, -0.02635854f,
+//     0.02071854f, 0.23177212f, 0.20048545f, 0.00918332f, -0.15702221f, 0.15021163f, -0.08837952f, 0.77463996f,
+//     -0.16013779f, -0.08446842f, 0.36182451f, 0.03408058f, -0.89584911f, -0.07367151f, -0.47705418f, 0.21293150f,
+//     0.16356786f, 0.34995452f, 0.28180820f, -0.25168347f, 0.14650039f, -0.09908942f, 0.07158908f, -0.21640940f,
+//     0.04045225f, 0.03677846f, 0.32878724f, 0.10458361f, 0.35216457f, -0.07829749f, -0.63557523f, 0.49122557f,
+//     0.14836730f, -0.51653773f, 0.07389075f, -0.67739564f, 0.25965068f, -0.03471072f, -0.11483123f, 0.21926188f,
+//     -0.70420533f, 0.12850615f, 0.11820860f, -0.11542711f, -0.27519122f, 0.23720619f, -0.53774971f, -0.55958837f,
+//     -0.30586299f, 0.22820990f, 0.30501473f, -0.27259585f, 0.37817031f, 0.01860859f, -0.64751792f, 0.48475039f,
+//     0.35743517f, -0.21593755f, -0.02053341f, 0.03020995f, -0.09587974f, 0.18548904f, 0.19992125f, -0.02187713f,
+//     0.00493721f, -0.21287052f, 0.69042319f, 0.32130373f, 0.08932117f, -0.00438589f, 0.16487591f, -0.09912005f,
+//     0.48246610f, 0.37575221f, 0.04516862f, 0.37676093f, -0.62667978f, 1.27485013f, 0.17793016f, 0.16417918f,
+//     -0.20781425f, 0.11089902f, -0.75537270f, 0.47438598f, 0.61463904f, 0.17963529f, 0.44237143f, 0.06339964f,
+//     0.43184847f, -0.23958609f, 0.08521918f, -0.21481583f, -0.11141165f, -0.23205973f, 0.38846427f, 0.24903251f,
+//     -0.10266587f, -0.29976553f, -0.28466985f, -0.12457935f, 0.56978983f, 0.36132923f, 0.38157374f, 0.45539707f,
+//     0.64121717f, -0.86971700f, 0.05760014f, 0.55464184f, 0.51974016f, -0.28900728f, 0.61555326f, 0.51291376f,
+//     0.15670344f, 0.37692481f, -0.17514639f, 0.61394870f, 0.36557451f, -0.39038509f, 0.13229638f, -0.61575866f,
+//     -0.26306522f, 0.18631352f, 0.29190120f, -0.57400203f, -0.86602455f, -0.05346155f, 0.35318920f, 0.12293958f,
+//     0.00756184f, 0.11858679f, -0.41523951f, 0.13592122f, -0.02300772f, -0.20520256f, 0.62351888f, 0.74419409f,
+//     -0.86641842f, 0.03367114f, -0.14075564f, -0.42136672f, -1.10291684f, 0.07093690f, -0.18049753f, -0.17434004f,
+//     -0.19809417f, 0.29731902f, -0.32665202f, -0.60346222f, 0.07837567f, -0.37134057f, 0.32860318f, 0.51470792f,
+//     0.40901127f, 0.83703125f, 0.44115695f, -0.29854444f, -0.55927157f, -0.11613575f, 0.15212031f, -0.48472443f,
+//     0.97278285f, 0.02883964f, -0.20042092f, 0.46843594f, -0.35724190f, 0.44989857f, -0.31364313f, 0.77897775f,
+//     0.01202951f, 0.41564429f, -0.28379619f, -0.03413983f, -0.29042092f, 0.50899643f, 0.61614347f, -0.46069908f,
+//     -0.14120041f, -0.89466316f, -0.10126957f, -0.42005575f, -0.10998584f, -0.17026590f, 0.78668135f, -0.61496568f,
+//     0.21158150f, -0.14448860f, 0.44719654f, 0.68494850f, 0.24508049f, -0.12992135f, -0.67720425f, -0.27868956f,
+//     -0.10156789f, 0.30557063f, -0.43758312f, 0.71398413f, -0.20410079f, -0.19874316f, -0.30503532f, -0.26471016f,
+//     0.42123973f, -0.74088287f, 0.38824371f, -0.57687306f, 0.63756245f, -0.26092255f, -0.39363995f, -0.22810782f,
+//     -0.21967702f, -0.87436986f, 0.73303628f, -0.13819201f, 0.29727119f, -0.11356843f, 0.51709628f, -0.02167818f,
+//     0.39981562f, -0.24265833f, -0.43625060f, 0.88465708f, -0.14265582f, 0.01146953f, 0.58001435f, -0.51402861f,
+//     -0.89539564f, 0.00788606f, -1.14511287f, 0.79036373f, 0.51132196f, -0.09372519f, -0.47080988f, 0.34815022f,
+//     -0.09388789f, -1.19090927f, 0.15879461f, -1.39627945f, 0.52921808f, 0.38570425f, -0.32598472f, -0.10224601f,
+//     -0.49374250f, -0.33100343f, 0.69071501f, -0.33629373f, -0.63504016f, 0.77939200f, 0.05935763f, 0.61489463f,
+//     0.32413933f, -1.04640770f, 0.01769981f, 0.01883321f, -0.35369647f, -0.26153654f, 0.56056505f, -0.24787486f,
+//     -0.07074424f, 0.43621245f, -0.05948503f, 0.18124041f, -0.10957783f, -0.11510111f, -0.54952848f, -0.18358916f,
+//     -0.09412994f, 0.36979792f, 0.00326239f, 0.19979180f, 0.55178988f, -0.12903406f, 0.85294443f, -0.09131868f,
+// };
+// static Dtype_w b[64] = {
+//     -0.14599867f, 0.17700179f, -0.04383695f, 0.25041321f, 0.36516097f, 0.18929146f, 0.17170124f, -0.08043242f,
+//     0.23529133f, 0.09289140f, -0.24546312f, 0.03719043f, -0.40064079f, -0.21811660f, 0.17989591f, -0.10535361f,
+//     0.58001447f, 0.09546765f, 0.02171258f, 0.03654604f, -0.43132123f, 0.10008126f, -0.04399293f, 0.63862914f,
+//     0.33253667f, -0.26837528f, -0.09750392f, -0.10565000f, -0.00133306f, -0.21286097f, 0.13032080f, -0.00068104f,
+//     0.35726142f, 0.04029825f, -0.14425746f, -0.52299833f, -0.29537794f, -0.02149680f, 0.39571819f, -0.38106012f,
+//     -0.03890241f, -0.31503761f, -0.00792216f, -0.08633587f, 0.29946643f, 0.30567402f, -0.32568416f, -0.18751773f,
+//     -0.14331929f, -0.06883785f, -0.05154165f, 0.38783962f, -0.05883502f, -0.12164725f, 0.29361641f, -0.37949762f,
+//     -0.23185189f, -0.05920886f, 0.00323340f, -0.17606568f, 0.12859198f, -0.23948078f, -0.03994910f, -0.26873812f,
+// };
+// #pragma HLS ARRAY_PARTITION variable=w type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=b type=complete dim=0
+//
+// #pragma HLS INLINE
+//     for (int o = 0; o < out_dim; ++o) {
+//         Dtype_acc acc = 0;
+//         for (int i = 0; i < in_dim; ++i) {
+// #pragma HLS PIPELINE II=1
+//             acc += input_vec[i] * w[i][o];
+//         }
+//         input_type val = acc + b[o];
+//         output_vec[o] = apply_relu ? relu(val) : val;
+//     }
+// }
+//
+//
+//
+// static void dense_layer2(const int_type in_dim, const int_type out_dim,
+//                         input_type input_vec[], input_type output_vec[], bool apply_relu) {
+//
+//     static Dtype_w w[64][NUM_CLASSES] = {
+//      0.06832754f, -0.13863400f, 0.05956966f, 0.06400098f, -0.04428273f, 0.06938134f, 0.00114003f, 0.11396642f,
+//     -0.05869496f, 0.00880097f, 0.01704329f, -0.07167417f, -0.01158714f, 0.36363482f, 0.26657116f, 0.17570233f,
+//     -1.27866793f, 0.15538330f, -0.40212294f, 0.75074065f, 0.29538521f, -0.94295293f, -2.41247153f, -0.02975402f,
+//     0.05247660f, 0.25447568f, 0.25979340f, 0.10171068f, -0.20944831f, -0.19292566f, 0.29271966f, 0.25340509f,
+//     -0.18865354f, -1.36609328f, 0.37078601f, 0.18544433f, 0.51713580f, -2.89163542f, -0.02233165f, 0.28260437f,
+//     0.34794399f, -0.58296990f, 0.31439528f, -2.34507108f, 0.40196949f, -1.75518250f, 0.19562979f, -0.78749692f,
+//     -0.00674459f, -0.23747222f, 0.10033309f, 0.08807063f, 0.27697513f, 0.04026812f, 0.49123985f, 0.40631342f,
+//     -0.39393520f, 0.60727715f, -0.42792860f, -0.48740608f, -2.71113014f, -0.81877238f, -1.37916136f, -1.86300910f,
+//     -1.32861471f, 0.93611062f, -0.61260539f, -0.68028229f, -1.10593987f, -0.39785042f, -1.32902753f, -0.31535640f,
+//     0.69803131f, -0.63469541f, -0.85184050f, -0.74553537f, -1.19099534f, -0.19065876f, 0.54325211f, -0.44142500f,
+//     1.17606330f, 0.40457472f, -0.14831746f, -0.03916760f, -0.36560747f, -0.36910793f, -1.18804049f, -2.06731057f,
+//     -1.35314918f, -1.27713716f, -0.96818763f, -1.86562705f, -0.28400740f, 0.23179258f, -0.44211015f, -0.02562152f,
+//     -0.41107127f, 0.29649344f, 0.39328960f, -0.05421823f, 0.18040501f, 0.12613909f, 0.39518404f, 0.07345345f,
+//     -0.53480291f, 0.19514023f, 0.28030026f, 0.26570559f, 0.16054909f, 0.30116567f, 0.17986898f, -2.26102710f,
+//     -1.26917148f, -2.16665697f, -1.55051184f, -0.43954477f, -1.99872589f, -2.53567290f, -0.36697501f, 0.14803326f,
+//     -1.04514599f, 0.21375090f, -1.20425081f, 0.28665718f, 0.29286742f, 0.12666851f, 0.31642109f, 0.02183544f,
+//     0.48869494f, 0.24824128f, 0.06795605f, -1.59279716f, 0.31539771f, -1.30032027f, 0.35440138f, 0.11825003f,
+//     0.72389257f, 0.01769786f, -1.33882391f, -2.46597648f, -0.13140677f, -1.80305052f, 0.00411537f, 0.27286819f,
+//     -0.00575390f, -2.73730111f, 0.11264628f, 0.43202397f, -1.71957874f, -0.09529199f, -2.02819991f, 0.48399109f,
+//     0.30352005f, 0.17216811f, 0.39260492f, -0.95431602f, -1.18306994f, 0.33383420f, -2.06387854f, -0.01515269f,
+//     -0.53391868f, -0.18962146f, -0.12968624f, -0.04284066f, -0.62012601f, 0.25052813f, 0.54692543f, -1.01617992f,
+//     0.34554690f, -0.06036191f, 0.03887911f, 0.02716830f, 0.05285144f, 0.07555271f, -0.05906959f, -0.10641251f,
+//     -0.03417834f, -0.11078272f, -0.09629223f, 0.06095106f, 0.06343628f, -0.11403572f, 0.52171838f, -2.01033497f,
+//     1.43229389f, 1.59619927f, -1.43210852f, 0.33405405f, -1.88032579f, -1.17259812f, -0.81777316f, -1.15950072f,
+//     -1.36504972f, 1.63070738f, -0.97304964f, 0.26506031f, -2.42319512f, 0.10051263f, 0.37953877f, 0.26335523f,
+//     0.21707886f, -1.66372788f, -0.03631283f, -1.12090027f, -0.93830097f, 0.26719964f, -2.30287862f, 0.36424917f,
+//     0.05743663f, 0.12814318f, 0.17649758f, 0.06518925f, 0.17350020f, 0.13091552f, 0.19074708f, -0.13028958f,
+//     -2.26913357f, -1.01296508f, -2.02518630f, -0.06168501f, -0.31554204f, -0.92472237f, 0.42391247f, -0.63021833f,
+//     0.03522221f, 0.72056401f, 0.36709499f, -0.23669133f, 0.18898581f, 0.43599287f, 0.19547038f, -2.40163708f,
+//     -2.65035009f, -0.09901152f, 0.43780664f, -2.25128937f, -0.49742284f, -0.40255827f, 0.45332009f, 0.34608698f,
+//     -1.72091198f, 0.52288508f, -0.65549403f, -0.04314091f, -1.31422305f, 0.26848105f, 0.44784689f, -0.69932950f,
+//     -0.08953823f, 0.18523757f, 0.26372346f, 0.46175668f, 0.41874665f, -0.33335736f, -0.34802702f, 0.16264503f,
+//     0.59611571f, -1.84240472f, 0.50912035f, -2.63403940f, -0.23031110f, -0.36167893f, -1.14691412f, -1.69013238f,
+//     0.64532942f, 0.43748063f, -2.94175529f, 0.03755723f, 0.31481418f, -0.22539526f, 0.36664179f, 0.16476806f,
+//     0.23235248f, 0.86251009f, -0.95891827f, 0.71279508f, 1.06393480f, -1.91673887f, -1.10179150f, 0.39717114f,
+//     -1.22467959f, -0.42773154f, -1.33246565f, 0.24902645f, -0.62404591f, -0.24680597f, 0.13559568f, -3.01163960f,
+//     -0.29125014f, 0.08996169f, 0.00461105f, -0.11349373f, -1.77615964f, 0.30677685f, -1.49796820f, 0.22420979f,
+//     -0.09444164f, 0.21952084f, 0.27924716f, 0.04158428f, 0.09268346f, 0.13556100f, 0.02204929f, 0.05077268f,
+//     0.17117128f, 0.06589317f, -0.73009157f, -2.56331253f, -1.82645833f, -1.03467047f, -1.33906233f, -1.01250553f,
+//     -0.71005929f, 0.30937096f, -0.05878581f, 0.64559388f, -0.88975716f, 0.48514307f, -1.08625197f, 0.64769357f,
+//     -2.42777658f, 0.26596674f, -1.39090025f, 0.32173997f, -1.78149521f, -0.06003122f, -0.07371813f, -1.65270221f,
+//     -3.52301383f, 1.18710482f, 0.02734423f, 0.07541945f, -0.15138224f, -0.67542070f, 0.27109712f, -1.97422993f,
+//     1.05040348f, 0.97283655f, 0.00521454f, -0.13938121f, 0.31678537f, 0.55494618f, -2.47572875f, -1.19829428f,
+//     0.40683293f, 0.06260596f, 0.29237312f, 0.31989628f, -0.60164416f, 0.20120195f, 0.15822636f, -0.07728057f,
+//     0.78250909f, -1.24565113f, 1.00451791f, -1.24112976f, -2.11848712f, 1.26459837f, 0.62048668f, -1.35656071f,
+//     -0.55782843f, -0.04518701f, -0.94113618f, -0.34111229f, 0.58602762f, 0.51331204f, -2.40622544f, -2.61579514f,
+//     0.56246758f, 0.64086610f, -2.20336986f, 0.33985904f, -0.45540494f, 0.20339854f, 0.41906241f, 0.36882034f,
+//     -1.04395282f, -1.42268944f, -1.69556308f, 0.62137723f, -0.16404548f, 0.16739993f, 0.62317818f, 0.07748119f,
+//     -1.48858047f, -0.20299812f, 0.41710472f, 0.63060200f, -0.84756970f, -0.63967419f, -0.42352229f, -1.00927484f,
+//     0.68280488f, 0.71119177f, -1.04575598f, -3.10796309f, 0.45544448f, 0.66229397f, -0.87153691f, -0.61411357f,
+//     0.24062048f, 0.45197913f, -1.38397980f, -0.36324960f, 0.17354915f, -2.35222769f, 0.11235008f, -2.53205895f,
+//     0.20747070f, -2.64777040f, 0.36227328f, -0.61632687f, 0.34206182f, -0.54109222f, 0.45812455f, 0.12879330f,
+//     0.40162352f, 0.46947703f, -1.16213882f, -0.11295935f, -0.08217498f, 0.13373254f, 0.32444060f, 0.28012693f,
+//     -1.31555247f, 0.35361680f, -1.13932467f, -2.04806447f, 0.08214027f, 0.26621428f, 0.36403760f, -0.31972319f,
+//     0.28575456f, -0.53020436f, 0.20347168f, -1.52148163f, -0.02741837f, -1.16395414f, -0.24031372f, 0.36094448f,
+//     -2.20977855f, 0.26490653f, 0.04101733f, 0.13320912f, -2.85760903f, -2.34822178f, 0.23496082f, -2.30381250f,
+//     0.07513460f, -1.66502154f, 0.60035938f, -2.44646287f, 0.34678689f, 0.20399001f, -0.33675084f, 0.13561533f,
+//     -2.01153898f, -0.15974814f, 0.15311228f, 0.12344109f, 0.03181468f, -1.73029172f, 0.28016636f, -1.42427921f,
+//     0.19570306f, 0.17677973f, 0.04656209f, 0.24847016f, 0.42042264f, -1.75767267f, 0.25102755f, -1.41438067f,
+//     0.59905231f, 0.36695868f, -2.64430022f, 0.45701006f, -0.35904101f, -2.09773135f, -0.13387761f, -1.39311993f,
+//     0.40415600f, -0.04758612f, 0.05532739f, -2.08411789f, 0.16290283f, 0.34511623f, -2.13646221f, 0.06450132f,
+//     -3.32962775f, 0.44485250f, 0.17172672f, -0.13672943f, 0.29378226f, -0.93157154f, -1.57831728f, 0.18799871f,
+//     0.20737816f, 0.21131489f, 0.13025683f, 0.24396312f, 0.07831036f, 0.28056887f, -2.30450320f, 0.22284274f,
+//     -1.98809516f, 0.28962052f, -2.10676241f, -0.09315735f, -0.46100694f, 0.05447991f, 0.00288707f, -2.67208695f,
+//     -2.83913016f, 0.20904598f, -1.74132550f, 0.53875273f, 0.16944242f, 0.21745089f, -0.52685457f, 0.14290313f,
+//     -2.33200884f, 0.11077639f, 0.14904532f, 0.09281815f, 0.14376631f, 0.14070891f, 0.20158212f, -0.63530219f,
+//     0.17617503f, -0.09310113f, 0.34818929f, -1.15558434f, 0.02020678f, 0.02511545f, 0.67900127f, -1.91422880f,
+//     0.82702571f, -0.71277249f, -1.89988673f, 0.38130459f, 0.46384025f, -2.14487934f, -0.00748140f, 0.34634587f,
+//     0.16880761f, 0.35320503f, 0.27896670f, 0.02924522f, 0.38309115f, -2.62434363f, 0.13399139f, -0.58744210f,
+//     0.31505105f, 0.17440313f, 0.33618975f, -1.63083482f, 0.11819597f, 0.27742773f, -0.11457595f, 0.40217012f,
+//     -1.46136189f, 0.43383029f, -0.84155071f, 0.42807457f, -1.61812031f, 0.39594498f, 0.23904705f, 0.06943556f,
+//     -0.38677576f, -0.78003329f, -0.04187023f, -0.54380804f, 0.40032047f, 0.18089756f, -0.28985128f, -2.17897177f,
+//     0.99775362f, 0.51148629f, -0.54158181f, 0.67595696f, -0.89228469f, -0.90261102f, -0.14887433f, -2.05565500f,
+//     -1.68648183f, 0.81863415f, -0.78795242f, -0.72208267f, -1.29796875f, 0.18325968f, -1.02187455f, -0.18035786f,
+//     1.02192557f, -0.74496210f, -0.73625159f, -0.57347691f, -1.19339979f, -0.61023492f, -0.09985985f, -0.48892045f,
+//     -1.87008047f, -2.86704755f, -0.02747658f, -0.34895867f, -1.03197968f, -0.01646494f, 0.20081623f, 0.05066572f,
+//     0.20376252f, 0.21197523f, 0.15096636f, -0.12952533f, -0.06354905f, -0.12385345f, -0.03714940f, 0.03616455f,
+//     -0.08454095f, -0.12962636f, 0.03924325f, -0.04535029f, -0.09713880f, 0.00573967f, 0.01665619f, -0.06036052f,
+//     -0.06631434f, -0.06470443f, 0.04350789f, 0.00032870f, -0.00169014f, 0.09615239f, 0.11448832f, -0.08718282f,
+//     0.11939662f, -0.04678049f, -0.06488266f, -0.09357657f, -0.07063991f, -1.95054996f, 0.13292575f, 0.15945590f,
+//     0.20910791f, 0.09324045f, 0.31797794f, -0.01533260f, -0.61697197f, -1.79024196f, -0.21334702f, -1.91394663f,
+//     -0.85079861f, -1.64617574f, 0.19028547f, -1.16422629f, 0.24640819f, -0.48290712f, -0.88019282f, -1.17450500f,
+//     0.46513829f, -0.39328167f, 0.61006629f, -1.19984090f, 0.36436534f, -0.09597546f, 0.31985751f, -0.85842437f,
+//     0.19770774f, 0.24749963f, 0.25293118f, 0.18773007f, 0.29123428f, 0.18449737f, -2.28165841f, -1.95328271f,
+//     -2.29138446f, -1.90714109f, -1.60283887f, -1.48681867f, -0.02266379f, 0.01148369f, -0.01239542f, -0.04128982f,
+//     -0.00000207f, -0.06016706f, -0.05338720f, -0.08759087f, -0.10656140f, 0.07955182f, -0.03888687f, 0.02840371f,
+//     0.00200753f, -0.07216844f, 0.07396963f, -0.01222031f, 0.05610602f, -0.12087474f, -0.01371492f, -0.01008397f,
+//     -0.09050610f, 0.12598264f, 0.05888432f, -0.05817362f, -0.04702932f, 0.01003003f, 0.63194370f, 0.13047011f,
+//     -1.69918835f, 1.45092189f, -1.34316158f, -0.67939639f, 0.37603909f, -0.37581554f, -1.28392172f, -1.14466190f,
+//     -0.67940617f, -0.79231358f, 0.18043813f, 0.09365945f, -1.02555418f, -0.07408689f, 0.13104309f, 0.04799340f,
+//     0.07242803f, -2.42717957f, 0.12346351f, -0.90880913f, -0.02789410f, 0.15856493f, -0.48214161f, 0.16171622f,
+//     0.17998846f, -2.16399550f, 0.04485012f, 0.22283894f, 0.61741471f, -2.32450914f, 0.31172001f, -0.78469712f,
+//     0.49515194f, 0.32222372f, -0.78680640f, 0.05559962f, 0.44224191f, 0.12678277f, 0.18895964f, -0.14830363f,
+//     0.22512035f, -3.10562706f, 0.28520209f, 0.07456248f, -0.89512342f, 0.71233052f, 0.26856220f, 0.40631586f,
+//     -1.71276796f, 0.14143874f, -2.28890324f, 0.09143519f, -0.01209212f, -0.26820633f, -0.00020494f, -0.27687457f,
+//     0.21261625f, 0.17719370f, 0.11178192f, 0.17399666f, 0.14518097f, 0.27870497f, 0.12316252f, 0.03911582f,
+//     0.13146415f, -0.14049265f, 0.36787063f, -3.08576655f, -0.95070851f, 0.29108268f, -0.23446064f, 0.46532905f,
+//     0.31798816f, -0.16448119f, 0.10889480f, 0.40414768f, -0.65515298f, -0.16044730f, 0.44267920f, -1.65622008f,
+//     1.36539495f, 1.14773726f, -1.92883682f, -1.96601760f, 0.63233465f, 0.70322210f, -1.70630014f, 0.51076847f,
+//     -2.09453058f, -0.27191657f, 0.19598483f, 0.06285436f, -0.00824991f, 0.04066077f, -0.00996706f, 0.25277865f,
+//     -0.86822522f, 0.30203125f, -2.07587886f, 0.28258863f, -3.01662230f, 0.23601639f, 0.26643562f, -0.04383225f,
+//     -2.87603188f, -0.22300413f, 0.19170962f, -1.10614145f, -0.00836070f, -2.47762609f, 0.51452297f, -0.16078654f,
+//     0.41710186f, 0.32519534f, -0.48814917f, -0.04259189f, -0.12321248f, -0.13937302f, 0.06932776f, -0.04826940f,
+//     -0.03460953f, 0.00984626f, -0.08420598f, 0.00130762f, 0.00803633f, -0.14595079f, -0.07151493f, 0.07985604f,
+// };
+// static Dtype_w b[NUM_CLASSES] = {
+//     0.77610791f, 0.52238792f, 0.14625332f, -0.56474596f, -0.62734902f, -0.02282282f, 0.40325844f, -0.57642448f,
+//     -0.37653786f, 0.18979645f, -0.56446129f, 0.06096405f, -0.67072046f
+// };
+// #pragma HLS ARRAY_PARTITION variable=w type=complete dim=4
+// #pragma HLS ARRAY_PARTITION variable=b type=complete dim=0
+//
+//
+// #pragma HLS INLINE
+//     for (int o = 0; o < out_dim; ++o) {
+//         Dtype_acc acc = 0;
+//         for (int i = 0; i < in_dim; ++i) {
+// #pragma HLS PIPELINE II=1
+//             acc += input_vec[i] * w[i][o];
+//         }
+//         input_type val = acc + b[o];
+//         output_vec[o] = apply_relu ? relu(val) : val;
+//     }
+// }
 
 void hw_simcnn_fault_v1_forward(input_type input[INPUT_LEN], output_type output[NUM_CLASSES]) {
 #pragma HLS ARRAY_PARTITION variable=output complete dim=0
 #pragma HLS ARRAY_PARTITION variable=input complete dim=0
 
-    init_demo_params();
+    // init_demo_params();
 
     // Stem convolution (kernel 7, stride 2, padding 3)
     input_type stem_in[INPUT_LEN][1];
-#pragma HLS ARRAY_PARTITION variable=stem_in complete dim=2
+#pragma HLS ARRAY_PARTITION variable=stem_in complete dim=0
     for (int i = 0; i < INPUT_LEN; ++i) {
 #pragma HLS PIPELINE II=1
         stem_in[i][0] = input[i];
     }
 
     input_type stem_out[STEM_OUT_LEN][STEM_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=stem_out complete dim=2
-    conv1d(INPUT_LEN, 7, 2, 1, STEM_OUT_CH, 3, stem_in, STEM_W, STEM_B, stem_out);
+#pragma HLS ARRAY_PARTITION variable=stem_out complete dim=0
+    conv1d(INPUT_LEN, 7, 2, 1, STEM_OUT_CH, 3, stem_in, stem_out);
 #if ENABLE_HW_SIMCNNFAULT_BN
     apply_batchnorm(STEM_OUT_LEN, STEM_OUT_CH, stem_out, STEM_BN_GAMMA, STEM_BN_BETA, STEM_BN_MEAN, STEM_BN_VAR);
 #endif
 
-    // Multi-branch 3x3 and 5x5
-    input_type branch3_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=branch3_out complete dim=2
-    conv1d_branch3(STEM_OUT_LEN, 3, 1, STEM_OUT_CH, BRANCH_OUT_CH, 1, stem_out, BRANCH3_W, BRANCH3_B, branch3_out);
+//     // Multi-branch 3x3 and 5x5
+//     input_type branch3_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=branch3_out complete dim=2
+//     conv1d_branch3(STEM_OUT_LEN, 3, 1, STEM_OUT_CH, BRANCH_OUT_CH, 1, stem_out, branch3_out);
+//
+//     input_type branch5_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=branch5_out complete dim=2
+//     conv1d_branch5(STEM_OUT_LEN, 5, 1, STEM_OUT_CH, BRANCH_OUT_CH, 2, stem_out, branch5_out);
+// #if ENABLE_HW_SIMCNNFAULT_BN
+//     apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch3_out, BRANCH_BN_GAMMA, BRANCH_BN_BETA, BRANCH_BN_MEAN, BRANCH_BN_VAR);
+//     apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch5_out, BRANCH_BN_GAMMA, BRANCH_BN_BETA, BRANCH_BN_MEAN, BRANCH_BN_VAR);
+// #endif
+//
+//     input_type merge_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=merge_out complete dim=2
+//     for (int i = 0; i < BRANCH_OUT_LEN; ++i) {
+// #pragma HLS PIPELINE II=1
+//         for (int c = 0; c < BRANCH_OUT_CH; ++c) {
+//             merge_out[i][c] = relu(branch3_out[i][c] + branch5_out[i][c]);
+//         }
+//     }
+//
+//     // Block 2 (kernel 5, stride 2)
+//     input_type block2_out[BLOCK2_OUT_LEN][BLOCK2_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=block2_out complete dim=2
+//     conv1d_block(BRANCH_OUT_LEN, 5, 2, BRANCH_OUT_CH, BLOCK2_OUT_CH, 2, merge_out, block2_out);
+// #if ENABLE_HW_SIMCNNFAULT_BN
+//     apply_batchnorm(BLOCK2_OUT_LEN, BLOCK2_OUT_CH, block2_out, BLOCK2_BN_GAMMA, BLOCK2_BN_BETA, BLOCK2_BN_MEAN, BLOCK2_BN_VAR);
+// #endif
+//
+//     // Channel attention
+//     input_type att_out[BLOCK2_OUT_LEN][BLOCK2_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=att_out complete dim=2
+//     channel_attention(block2_out, att_out);
+//
+//     // Global average pooling
+//     input_type gap_out[BLOCK3_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=gap_out complete dim=0
+//     global_avg(BLOCK3_OUT_LEN, BLOCK3_OUT_CH, att_out, gap_out);
+//
+//     // Dense layers
+//     input_type fc1_out[BLOCK3_OUT_CH];
+// #pragma HLS ARRAY_PARTITION variable=fc1_out complete dim=0
+//     dense_layer1(BLOCK3_OUT_CH, BLOCK3_OUT_CH, gap_out, fc1_out, true);
+//
+//     input_type fc2_out[NUM_CLASSES];
+// #pragma HLS ARRAY_PARTITION variable=fc2_out complete dim=0
+//     dense_layer2(BLOCK3_OUT_CH, NUM_CLASSES, fc1_out, fc2_out, false);
 
-    input_type branch5_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=branch5_out complete dim=2
-    conv1d_branch5(STEM_OUT_LEN, 5, 1, STEM_OUT_CH, BRANCH_OUT_CH, 2, stem_out, BRANCH5_W, BRANCH5_B, branch5_out);
-#if ENABLE_HW_SIMCNNFAULT_BN
-    apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch3_out, BRANCH_BN_GAMMA, BRANCH_BN_BETA, BRANCH_BN_MEAN, BRANCH_BN_VAR);
-    apply_batchnorm(BRANCH_OUT_LEN, BRANCH_OUT_CH, branch5_out, BRANCH_BN_GAMMA, BRANCH_BN_BETA, BRANCH_BN_MEAN, BRANCH_BN_VAR);
-#endif
+    std::cout << "stem_out[" << 0 << "] = " << stem_out[0][0] << std::endl;
+    std::cout << "stem_out[" << 1 << "] = " << stem_out[0][1] << std::endl;
+    std::cout << "stem_out[" << 2 << "] = " << stem_out[0][2] << std::endl;
+    std::cout << "stem_out[" << 3 << "] = " << stem_out[0][3] << std::endl;
 
-    input_type merge_out[BRANCH_OUT_LEN][BRANCH_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=merge_out complete dim=2
-    for (int i = 0; i < BRANCH_OUT_LEN; ++i) {
-#pragma HLS PIPELINE II=1
-        for (int c = 0; c < BRANCH_OUT_CH; ++c) {
-            merge_out[i][c] = relu(branch3_out[i][c] + branch5_out[i][c]);
-        }
-    }
-
-    // Block 2 (kernel 5, stride 2)
-    input_type block2_out[BLOCK2_OUT_LEN][BLOCK2_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=block2_out complete dim=2
-    conv1d_block(BRANCH_OUT_LEN, 5, 2, BRANCH_OUT_CH, BLOCK2_OUT_CH, 2, merge_out, BLOCK2_W, BLOCK2_B, block2_out);
-#if ENABLE_HW_SIMCNNFAULT_BN
-    apply_batchnorm(BLOCK2_OUT_LEN, BLOCK2_OUT_CH, block2_out, BLOCK2_BN_GAMMA, BLOCK2_BN_BETA, BLOCK2_BN_MEAN, BLOCK2_BN_VAR);
-#endif
-
-    // Block 3 (kernel 3, stride 2)
-    input_type block3_out[BLOCK3_OUT_LEN][BLOCK3_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=block3_out complete dim=2
-    conv1d_block3(BLOCK2_OUT_LEN, 3, 2, BLOCK2_OUT_CH, BLOCK3_OUT_CH, 1, block2_out, BLOCK3_W, BLOCK3_B, block3_out);
-#if ENABLE_HW_SIMCNNFAULT_BN
-    apply_batchnorm(BLOCK3_OUT_LEN, BLOCK3_OUT_CH, block3_out, BLOCK3_BN_GAMMA, BLOCK3_BN_BETA, BLOCK3_BN_MEAN, BLOCK3_BN_VAR);
-#endif
-
-    // Channel attention
-    input_type att_out[BLOCK3_OUT_LEN][BLOCK3_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=att_out complete dim=2
-    channel_attention(block3_out, att_out);
-
-    // Global average pooling
-    input_type gap_out[BLOCK3_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=gap_out complete dim=0
-    global_avg(BLOCK3_OUT_LEN, BLOCK3_OUT_CH, att_out, gap_out);
-
-    // Dense layers
-    input_type fc1_out[BLOCK3_OUT_CH];
-#pragma HLS ARRAY_PARTITION variable=fc1_out complete dim=0
-    dense_layer1(BLOCK3_OUT_CH, BLOCK3_OUT_CH, FC1_W, FC1_B, gap_out, fc1_out, true);
-
-    input_type fc2_out[NUM_CLASSES];
-#pragma HLS ARRAY_PARTITION variable=fc2_out complete dim=0
-    dense_layer2(BLOCK3_OUT_CH, NUM_CLASSES, FC2_W, FC2_B, fc1_out, fc2_out, false);
-
+FINAL_OUTPUT:
     for (int i = 0; i < NUM_CLASSES; ++i) {
 #pragma HLS PIPELINE II=1
-        output[i] = fc2_out[i];
+        output[i] = stem_out[i][0];
     }
 }
 

@@ -4,18 +4,19 @@
 #include "types.h"
 
 // Network dimensions derived from HW_SimCNNFault_V1.py
-#define INPUT_LEN 3000
-#define STEM_OUT_CH 16
-#define STEM_OUT_LEN 1500
+#define INPUT_LEN 120
+#define STEM_OUT_CH 4
+#define STEM_OUT_LEN 60
 
-#define BRANCH_OUT_CH 32
+#define BRANCH_OUT_CH 8
 #define BRANCH_OUT_LEN STEM_OUT_LEN
 
-#define BLOCK2_OUT_CH 64
-#define BLOCK2_OUT_LEN 750
+#define BLOCK2_OUT_CH 16
+#define BLOCK2_OUT_LEN 30
 
-#define BLOCK3_OUT_CH 64
-#define BLOCK3_OUT_LEN 375
+
+#define BLOCK3_OUT_CH BLOCK2_OUT_CH
+#define BLOCK3_OUT_LEN BLOCK2_OUT_LEN
 
 #define NUM_CLASSES 13
 
